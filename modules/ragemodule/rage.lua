@@ -1,13 +1,12 @@
 --[[
     Neverlose Rage Module
-    Advanced Ragebot with Prediction, Wall Check, and Auto Stop
+    Optimized Ragebot with Advanced Prediction and Performance
 ]]
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UserInputService = game:GetService("UserInputService")
 
 local LocalPlayer = Players.LocalPlayer
 local CurrentCamera = Workspace.CurrentCamera
@@ -18,6 +17,7 @@ RageModule.Settings = {
     -- Main Settings
     Enabled = false,
     SilentAim = true,
+    RotateCamera = false,
     AutoFire = true,
     AimThroughWalls = false,
     
@@ -41,9 +41,9 @@ RageModule.Settings = {
     HitChance = 100,
     MinDamage = 0,
     
-    -- Prediction
+    -- Prediction (всегда включено с максимальными значениями)
     Prediction = true,
-    PredictionStrength = 0.15,
+    PredictionStrength = 0.25,
     PingCompensation = true,
     
     -- Auto Stop
@@ -59,8 +59,6 @@ RageModule.Settings = {
     QuickScope = false,
     Backtrack = "High",
     DelayShot = false,
-    RemoveRecoil = true,
-    RemoveSpread = true,
     DoubleTap = false,
     
     -- Wall Check
@@ -68,7 +66,7 @@ RageModule.Settings = {
     WallPenetration = false
 }
 
--- Damage multipliers for body parts (SSG-08 specific)
+-- Damage multipliers (SSG-08)
 local DamageMultipliers = {
     Head = 4.0,
     UpperTorso = 1.0,
@@ -91,36 +89,45 @@ local DamageMultipliers = {
     ["Right Leg"] = 0.6
 }
 
--- Raycast parameters for wall checking
-local RaycastParams = RaycastParams.new()
-RaycastParams.FilterType = Enum.RaycastFilterType.Exclude
-RaycastParams.IgnoreWater = true
+-- Cached values for performance
+local CachedRaycastParams = RaycastParams.new()
+CachedRaycastParams.FilterType = Enum.RaycastFilterType.Exclude
+CachedRaycastParams.IgnoreWater = true
 
--- Internal state
 local CurrentTarget = nil
 local LastShotTime = 0
 local IsShooting = false
 local ActivePlayers = {}
 local LastPlayerUpdate = 0
 local RandomState = Random.new()
+local CachedLocalCharacter = nil
+local CachedLocalHead = nil
+local LastCacheUpdate = 0
 
--- Helper Functions
-
-local function IsPlayerAlive()
-    local character = LocalPlayer.Character
-    if not character then return false end
+-- Performance: Cache local character
+local function UpdateLocalCache()
+    local now = tick()
+    if now - LastCacheUpdate < 0.1 then return end
     
-    local humanoid = character:FindFirstChild("Humanoid")
-    if not humanoid or humanoid.Health <= 0 then return false end
-    
-    return true
+    LastCacheUpdate = now
+    CachedLocalCharacter = LocalPlayer.Character
+    if CachedLocalCharacter then
+        CachedLocalHead = CachedLocalCharacter:FindFirstChild("Head")
+    end
 end
 
+-- Optimized player alive check
+local function IsPlayerAlive()
+    if not CachedLocalCharacter then return false end
+    local humanoid = CachedLocalCharacter:FindFirstChild("Humanoid")
+    return humanoid and humanoid.Health > 0
+end
+
+-- Optimized tool check
 local function GetToolComponents()
-    local character = LocalPlayer.Character
-    if not character then return nil end
+    if not CachedLocalCharacter then return nil end
     
-    local tool = character:FindFirstChildOfClass("Tool")
+    local tool = CachedLocalCharacter:FindFirstChildOfClass("Tool")
     if not tool then return nil end
     
     local remotes = tool:FindFirstChild("Remotes")
@@ -132,133 +139,80 @@ local function GetToolComponents()
     return {
         tool = tool,
         fireShot = fireShot,
-        reload = remotes:FindFirstChild("Reload"),
         handle = tool:FindFirstChild("Handle")
     }
 end
 
+-- Optimized wall check
 local function CanBulletPassThrough(part)
     if not part or not part:IsA("BasePart") then return false end
     
-    -- Wedges are penetrable
-    if part:IsA("WedgePart") then return true end
-    
-    -- Check for specific names
-    local name = part.Name:lower()
-    if name:find("hamik") or name:find("paletka") then return true end
-    
-    -- Check parent names
-    if part.Parent then
-        local parentName = part.Parent.Name:lower()
-        if parentName:find("hamik") or parentName:find("paletka") then return true end
-    end
-    
-    -- Transparent parts
-    if part.Transparency > 0.2 then return true end
-    
-    -- Non-collidable parts
-    if not part.CanCollide then return true end
-    
-    -- Effects
-    if part:IsA("Decal") or part:IsA("ParticleEmitter") or part:IsA("Beam") or part:IsA("Trail") then
-        return true
-    end
-    
-    return false
-end
-
-local function IsPartOfCharacter(part)
-    if not part or not part:IsA("BasePart") then return false end
-    
-    local parent = part.Parent
-    if not parent then return false end
-    
-    if parent:FindFirstChild("Humanoid") then return true end
-    if parent:IsA("Accessory") or parent:IsA("Hat") then return true end
-    
-    return false
+    return part:IsA("WedgePart") 
+        or part.Transparency > 0.2 
+        or not part.CanCollide
 end
 
 local function StrictWallCheck(origin, target, localChar, targetChar)
-    if not origin or not target then return false, "invalid_positions" end
+    if not origin or not target then return false end
     
     local direction = target - origin
     local distance = direction.Magnitude
     
-    if distance < 0.1 or distance > 1000 then return false, "invalid_distance" end
+    if distance < 0.1 or distance > 1000 then return false end
     
-    RaycastParams.FilterDescendantsInstances = {localChar, targetChar}
+    CachedRaycastParams.FilterDescendantsInstances = {localChar, targetChar}
     
-    local result = Workspace:Raycast(origin, direction, RaycastParams)
+    local result = Workspace:Raycast(origin, direction, CachedRaycastParams)
     
-    if not result then return true, "clear" end
+    if not result then return true end
     
     local hitPart = result.Instance
     
-    -- Hit the target
-    if hitPart:IsDescendantOf(targetChar) then return true, "hit_target" end
+    if hitPart:IsDescendantOf(targetChar) then return true end
     
-    -- Check if bullet can pass through
-    if CanBulletPassThrough(hitPart) or IsPartOfCharacter(hitPart) then
+    if CanBulletPassThrough(hitPart) then
         local newOrigin = result.Position + direction.Unit * 0.1
         local newDirection = target - newOrigin
         
-        if newDirection.Magnitude < 0.1 then return true, "transparent_pass" end
+        if newDirection.Magnitude < 0.1 then return true end
         
-        RaycastParams.FilterDescendantsInstances = {localChar, targetChar, hitPart}
+        CachedRaycastParams.FilterDescendantsInstances = {localChar, targetChar, hitPart}
+        local secondResult = Workspace:Raycast(newOrigin, newDirection, CachedRaycastParams)
         
-        local secondResult = Workspace:Raycast(newOrigin, newDirection, RaycastParams)
-        
-        if not secondResult then return true, "passed_through" end
-        if secondResult.Instance:IsDescendantOf(targetChar) then return true, "hit_target_after_pass" end
-        
-        return false, "wall_blocking_after_pass"
-    end
-    
-    return false, "wall_blocking"
-end
-
-local function MultiPointWallCheck(origin, target, localChar, targetChar)
-    if not origin or not target or not localChar or not targetChar then return false end
-    
-    -- Check center point
-    local canHit, reason = StrictWallCheck(origin, target, localChar, targetChar)
-    if canHit then return true end
-    
-    -- Check offset points (up and down)
-    local offsets = {
-        Vector3.new(0, 0.3, 0),
-        Vector3.new(0, -0.3, 0)
-    }
-    
-    for _, offset in ipairs(offsets) do
-        canHit, reason = StrictWallCheck(origin, target + offset, localChar, targetChar)
-        if canHit then return true end
+        if not secondResult then return true end
+        if secondResult.Instance:IsDescendantOf(targetChar) then return true end
     end
     
     return false
 end
 
+-- Optimized prediction with velocity extrapolation
 local function PredictPosition(part, rootPart, ping)
     if not RageModule.Settings.Prediction or not rootPart then
         return part.Position
     end
     
-    local velocity = rootPart.AssemblyLinearVelocity or Vector3.new()
+    local velocity = rootPart.AssemblyLinearVelocity or Vector3.zero
     
-    -- Ignore slow movement
     if velocity.Magnitude < 3 then return part.Position end
     
     local predictionTime = RageModule.Settings.PredictionStrength
     
-    -- Add ping compensation
     if RageModule.Settings.PingCompensation and ping then
         predictionTime = predictionTime + (ping / 1000)
     end
     
-    return part.Position + velocity * predictionTime
+    -- Advanced prediction: учитываем ускорение
+    local acceleration = Vector3.zero
+    local humanoid = rootPart.Parent:FindFirstChild("Humanoid")
+    if humanoid and humanoid.MoveDirection.Magnitude > 0 then
+        acceleration = humanoid.MoveDirection * 16 * 0.1
+    end
+    
+    return part.Position + velocity * predictionTime + acceleration * predictionTime * predictionTime * 0.5
 end
 
+-- Optimized FOV check
 local function IsInFOV(position)
     if RageModule.Settings.FOV >= 360 then return true end
     
@@ -271,33 +225,27 @@ local function IsInFOV(position)
     
     local deltaX = screenPos.X - centerX
     local deltaY = screenPos.Y - centerY
-    local distance = math.sqrt(deltaX * deltaX + deltaY * deltaY)
     
-    return distance <= RageModule.Settings.FOV
+    return (deltaX * deltaX + deltaY * deltaY) <= (RageModule.Settings.FOV * RageModule.Settings.FOV)
 end
 
+-- Optimized damage calculation
 local function CalculateDamage(partName, distance)
-    local baseDamage = 54 * (DamageMultipliers[partName] or 0.5)
+    local multiplier = DamageMultipliers[partName] or 0.5
+    local baseDamage = 54 * multiplier
     
-    -- Distance falloff
     if distance > 300 then
-        baseDamage = baseDamage * 0.3
+        return math.floor(baseDamage * 0.3)
     elseif distance > 200 then
-        baseDamage = baseDamage * 0.5
+        return math.floor(baseDamage * 0.5)
     elseif distance > 100 then
-        baseDamage = baseDamage * 0.8
+        return math.floor(baseDamage * 0.8)
     end
     
     return math.floor(baseDamage)
 end
 
-local function CheckMinDamage(part, distance)
-    if RageModule.Settings.MinDamage <= 0 then return true end
-    
-    local damage = CalculateDamage(part.Name, distance)
-    return damage >= RageModule.Settings.MinDamage
-end
-
+-- Optimized hit chance
 local function CheckHitChance()
     if RageModule.Settings.HitChance >= 100 then return true end
     if RageModule.Settings.HitChance <= 0 then return false end
@@ -305,24 +253,12 @@ local function CheckHitChance()
     return RandomState:NextInteger(1, 100) <= RageModule.Settings.HitChance
 end
 
-local function GetRandomPointInPart(part, scale)
-    if not part then return part.Position end
-    if scale <= 0 then return part.Position end
-    
-    local size = part.Size * scale
-    
-    return part.Position + 
-        part.CFrame.RightVector * RandomState:NextNumber(-size.X / 2, size.X / 2) +
-        part.CFrame.UpVector * RandomState:NextNumber(-size.Y / 2, size.Y / 2) +
-        part.CFrame.LookVector * RandomState:NextNumber(-size.Z / 2, size.Z / 2)
-end
-
+-- Optimized player list update
 local function UpdateActivePlayers()
     table.clear(ActivePlayers)
     
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= LocalPlayer then
-            -- Team check
             if not player.Team or not LocalPlayer.Team or player.Team ~= LocalPlayer.Team then
                 local character = player.Character
                 if character then
@@ -343,111 +279,82 @@ local function UpdateActivePlayers()
     end
 end
 
+-- Get ping
 local function GetPing()
-    local ping = 0
-    pcall(function()
-        ping = LocalPlayer:GetNetworkPing() * 1000
+    local success, ping = pcall(function()
+        return LocalPlayer:GetNetworkPing() * 1000
     end)
-    return ping
+    return success and ping or 0
 end
 
+-- Optimized target selection
 local function FindBestTarget()
-    if not IsPlayerAlive() then return nil end
+    if not IsPlayerAlive() or not CachedLocalHead then return nil end
     
-    -- Update player list periodically
     local now = tick()
-    if now - LastPlayerUpdate >= 0.5 then
+    if now - LastPlayerUpdate >= 1.0 then
         LastPlayerUpdate = now
         UpdateActivePlayers()
     end
     
     if #ActivePlayers == 0 then return nil end
     
-    local character = LocalPlayer.Character
-    local head = character:FindFirstChild("Head")
-    if not head then return nil end
-    
     local bestTarget = nil
     local bestScore = -math.huge
     local ping = GetPing()
+    local headPos = CachedLocalHead.Position
+    
+    -- Приоритет хитбоксов
+    local hitboxPriority = {
+        {names = {"Head"}, enabled = RageModule.Settings.Hitboxes.Head, priority = 4},
+        {names = {"UpperTorso", "LowerTorso", "Torso", "HumanoidRootPart"}, enabled = RageModule.Settings.Hitboxes.Body, priority = 2},
+        {names = {"LeftUpperArm", "LeftLowerArm", "RightUpperArm", "RightLowerArm"}, enabled = RageModule.Settings.Hitboxes.Arms, priority = 1},
+        {names = {"LeftUpperLeg", "LeftLowerLeg", "RightUpperLeg", "RightLowerLeg", "Left Leg", "Right Leg"}, enabled = RageModule.Settings.Hitboxes.Legs, priority = 1}
+    }
     
     for _, targetData in ipairs(ActivePlayers) do
         local targetChar = targetData.character
         local rootPart = targetData.rootPart
         
-        -- Get valid hitboxes
-        local validParts = {}
-        
-        if RageModule.Settings.Hitboxes.Head then
-            local headPart = targetChar:FindFirstChild("Head")
-            if headPart then table.insert(validParts, {part = headPart, priority = 4}) end
-        end
-        
-        if RageModule.Settings.Hitboxes.Body then
-            for _, name in ipairs({"UpperTorso", "LowerTorso", "Torso", "HumanoidRootPart"}) do
-                local part = targetChar:FindFirstChild(name)
-                if part then table.insert(validParts, {part = part, priority = 2}) end
-            end
-        end
-        
-        if RageModule.Settings.Hitboxes.Arms then
-            for _, name in ipairs({"LeftUpperArm", "LeftLowerArm", "RightUpperArm", "RightLowerArm"}) do
-                local part = targetChar:FindFirstChild(name)
-                if part then table.insert(validParts, {part = part, priority = 1}) end
-            end
-        end
-        
-        if RageModule.Settings.Hitboxes.Legs then
-            for _, name in ipairs({"LeftUpperLeg", "LeftLowerLeg", "RightUpperLeg", "RightLowerLeg", "Left Leg", "Right Leg"}) do
-                local part = targetChar:FindFirstChild(name)
-                if part then table.insert(validParts, {part = part, priority = 1}) end
-            end
-        end
-        
-        for _, partData in ipairs(validParts) do
-            local part = partData.part
-            local predictedPos = PredictPosition(part, rootPart, ping)
-            
-            -- FOV check
-            if not IsInFOV(predictedPos) then continue end
-            
-            -- Distance check
-            local distance = (predictedPos - head.Position).Magnitude
-            
-            -- Min damage check
-            if not CheckMinDamage(part, distance) then continue end
-            
-            -- Wall check
-            if RageModule.Settings.WallCheck then
-                local canHit = false
-                
-                if RageModule.Settings.Multipoint then
-                    canHit = MultiPointWallCheck(head.Position, predictedPos, character, targetChar)
-                else
-                    canHit = StrictWallCheck(head.Position, predictedPos, character, targetChar)
+        for _, hitboxGroup in ipairs(hitboxPriority) do
+            if hitboxGroup.enabled then
+                for _, partName in ipairs(hitboxGroup.names) do
+                    local part = targetChar:FindFirstChild(partName)
+                    if part then
+                        local predictedPos = PredictPosition(part, rootPart, ping)
+                        
+                        if not IsInFOV(predictedPos) then continue end
+                        
+                        local distance = (predictedPos - headPos).Magnitude
+                        
+                        local damage = CalculateDamage(part.Name, distance)
+                        if damage < RageModule.Settings.MinDamage then continue end
+                        
+                        if RageModule.Settings.WallCheck then
+                            if not StrictWallCheck(headPos, predictedPos, CachedLocalCharacter, targetChar) then
+                                if not RageModule.Settings.AimThroughWalls then
+                                    continue
+                                end
+                            end
+                        end
+                        
+                        local score = damage * hitboxGroup.priority - distance * 0.05
+                        
+                        if score > bestScore then
+                            bestScore = score
+                            bestTarget = {
+                                player = targetData.player,
+                                character = targetChar,
+                                humanoid = targetData.humanoid,
+                                rootPart = rootPart,
+                                targetPart = part,
+                                predictedPos = predictedPos,
+                                distance = distance,
+                                damage = damage
+                            }
+                        end
+                    end
                 end
-                
-                if not canHit and not RageModule.Settings.AimThroughWalls then
-                    continue
-                end
-            end
-            
-            -- Calculate score
-            local damage = CalculateDamage(part.Name, distance)
-            local score = damage * partData.priority - distance * 0.1
-            
-            if score > bestScore then
-                bestScore = score
-                bestTarget = {
-                    player = targetData.player,
-                    character = targetChar,
-                    humanoid = targetData.humanoid,
-                    rootPart = rootPart,
-                    targetPart = part,
-                    predictedPos = predictedPos,
-                    distance = distance,
-                    damage = damage
-                }
             end
         end
     end
@@ -455,38 +362,23 @@ local function FindBestTarget()
     return bestTarget
 end
 
-local function IsGrounded(humanoid, rootPart)
-    if not humanoid or not rootPart then return false end
-    
-    if humanoid.FloorMaterial ~= Enum.Material.Air then return true end
-    
-    RaycastParams.FilterDescendantsInstances = {LocalPlayer.Character}
-    local result = Workspace:Raycast(rootPart.Position, Vector3.new(0, -3.5, 0), RaycastParams)
-    
-    return result ~= nil
-end
-
+-- Optimized auto stop
 local function ApplyAutoStop()
-    if not RageModule.Settings.AutoStop then return end
+    if not RageModule.Settings.AutoStop or not CachedLocalCharacter then return end
     
-    local character = LocalPlayer.Character
-    if not character then return end
+    local humanoid = CachedLocalCharacter:FindFirstChild("Humanoid")
+    local rootPart = CachedLocalCharacter:FindFirstChild("HumanoidRootPart")
     
-    local humanoid = character:FindFirstChild("Humanoid")
-    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if not humanoid or not rootPart or humanoid.FloorMaterial == Enum.Material.Air then return end
     
-    if not humanoid or not rootPart then return end
-    if humanoid.FloorMaterial == Enum.Material.Air then return end
-    
-    -- Create velocity constraint
     local bodyVelocity = Instance.new("BodyVelocity")
     bodyVelocity.Name = "AutoStopVelocity"
-    bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+    bodyVelocity.Velocity = Vector3.zero
     bodyVelocity.MaxForce = Vector3.new(100000, 0, 100000)
     bodyVelocity.P = 10000
     bodyVelocity.Parent = rootPart
     
-    local originalWalkSpeed = humanoid.WalkSpeed
+    local originalSpeed = humanoid.WalkSpeed
     humanoid.WalkSpeed = 0
     
     task.delay(0.3, function()
@@ -494,86 +386,82 @@ local function ApplyAutoStop()
             bodyVelocity:Destroy()
         end
         if humanoid and humanoid.Parent then
-            humanoid.WalkSpeed = originalWalkSpeed
+            humanoid.WalkSpeed = originalSpeed
         end
     end)
 end
 
+-- Disable anti-aim
 local function DisableAntiAim(direction)
-    local character = LocalPlayer.Character
-    if not character then return end
+    if not CachedLocalCharacter then return end
     
-    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    local rootPart = CachedLocalCharacter:FindFirstChild("HumanoidRootPart")
     if not rootPart then return end
     
-    -- Disable anti-aim helpers
     local aahelp = ReplicatedStorage:FindFirstChild("aahelp")
     local aahelp1 = ReplicatedStorage:FindFirstChild("aahelp1")
     
-    if aahelp then
-        pcall(function() aahelp:FireServer("disable") end)
-    end
-    if aahelp1 then
-        pcall(function() aahelp1:FireServer("disable") end)
-    end
+    if aahelp then pcall(function() aahelp:FireServer("disable") end) end
+    if aahelp1 then pcall(function() aahelp1:FireServer("disable") end) end
     
     task.wait(0.01)
     
-    -- Rotate to target
     local flatDirection = Vector3.new(direction.X, 0, direction.Z).Unit
     if flatDirection.Magnitude > 0.1 then
         rootPart.CFrame = CFrame.new(rootPart.Position, rootPart.Position + flatDirection)
     end
     
-    -- Re-enable after delay
     task.delay(0.15, function()
-        if aahelp then
-            pcall(function() aahelp:FireServer("enable") end)
-        end
-        if aahelp1 then
-            pcall(function() aahelp1:FireServer("enable") end)
-        end
+        if aahelp then pcall(function() aahelp:FireServer("enable") end) end
+        if aahelp1 then pcall(function() aahelp1:FireServer("enable") end) end
     end)
 end
 
+-- Optimized shooting
 local function PerformShot(target)
     if IsShooting then return end
     if tick() - LastShotTime < 1.3 then return end
     
     local toolComponents = GetToolComponents()
-    if not toolComponents then return end
+    if not toolComponents or not CachedLocalHead then return end
     
-    local character = LocalPlayer.Character
-    if not character then return end
-    
-    local head = character:FindFirstChild("Head")
-    if not head then return end
-    
-    -- Hit chance check
     if not CheckHitChance() then return end
     
     IsShooting = true
     
-    local shootDirection = (target.predictedPos - head.Position).Unit
+    local shootDirection = (target.predictedPos - CachedLocalHead.Position).Unit
     
     task.spawn(function()
-        -- Apply auto stop
         if RageModule.Settings.AutoStop and RageModule.Settings.AutoStopModes.Early then
             ApplyAutoStop()
         end
         
-        -- Disable anti-aim and rotate
+        if RageModule.Settings.RotateCamera and not RageModule.Settings.SilentAim then
+            CurrentCamera.CFrame = CFrame.new(CurrentCamera.CFrame.Position, target.predictedPos)
+        end
+        
         DisableAntiAim(shootDirection)
         
-        -- Fire shot
-        local success, err = pcall(function()
-            toolComponents.fireShot:FireServer(head.Position, shootDirection, target.targetPart)
-        end)
-        
-        if success then
-            LastShotTime = tick()
+        if RageModule.Settings.DoubleTap then
+            local success1 = pcall(function()
+                toolComponents.fireShot:FireServer(CachedLocalHead.Position, shootDirection, target.targetPart)
+            end)
+            
+            if success1 then
+                LastShotTime = tick()
+                task.wait(0.05)
+                pcall(function()
+                    toolComponents.fireShot:FireServer(CachedLocalHead.Position, shootDirection, target.targetPart)
+                end)
+            end
         else
-            warn("Rage Shot Error:", err)
+            local success = pcall(function()
+                toolComponents.fireShot:FireServer(CachedLocalHead.Position, shootDirection, target.targetPart)
+            end)
+            
+            if success then
+                LastShotTime = tick()
+            end
         end
         
         task.wait(0.1)
@@ -581,8 +469,9 @@ local function PerformShot(target)
     end)
 end
 
--- Main Loop
+-- Main loop (optimized)
 local Connection = nil
+local FrameCounter = 0
 
 function RageModule:Start()
     if Connection then return end
@@ -593,6 +482,9 @@ function RageModule:Start()
             return
         end
         
+        -- Update cache every frame
+        UpdateLocalCache()
+        
         if not IsPlayerAlive() then
             CurrentTarget = nil
             return
@@ -600,13 +492,15 @@ function RageModule:Start()
         
         if IsShooting then return end
         
-        -- Find best target
+        -- Throttle target finding (every 2 frames for performance)
+        FrameCounter = FrameCounter + 1
+        if FrameCounter % 2 ~= 0 then return end
+        
         local target = FindBestTarget()
         CurrentTarget = target
         
         if not target then return end
         
-        -- Auto fire
         if RageModule.Settings.AutoFire then
             PerformShot(target)
         end
@@ -619,6 +513,7 @@ function RageModule:Stop()
         Connection = nil
     end
     CurrentTarget = nil
+    FrameCounter = 0
 end
 
 function RageModule:GetCurrentTarget()
