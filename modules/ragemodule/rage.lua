@@ -68,6 +68,7 @@ local LastPingUpdate = 0
 local CurrentPing = 0
 local Random = Random.new()
 local CurrentTarget = nil
+local DEBUG_MODE = true -- Включить для отладки
 
 -- Helper functions
 local function IsAlive()
@@ -147,38 +148,35 @@ local function IsPartVisible(targetPart, targetChar)
     if dist < 0.1 then return true end
     if dist > MAX_DISTANCE then return false end
     
+    -- Simple wall check first
+    if not RageModule.Settings.WallCheck then
+        return true
+    end
+    
     local params = RaycastParams.new()
     params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = {myChar}
+    params.FilterDescendantsInstances = {myChar, targetChar}
     params.IgnoreWater = true
     
-    local unit = dir.Unit
-    local curOrigin = origin
+    local result = Workspace:Raycast(origin, dir, params)
     
-    -- Multi-pass raycast (like nemesis)
-    for _ = 1, 6 do
-        local res = Workspace:Raycast(curOrigin, targetPos - curOrigin, params)
+    if not result then return true end
+    
+    -- If hit target, it's visible
+    if result.Instance:IsDescendantOf(targetChar) then
+        return true
+    end
+    
+    -- Check if can pass through
+    local hit = result.Instance
+    if hit then
+        local name = hit.Name:lower()
+        local isHamik = name:find("hamik") or name:find("paletka")
+        local isSoft = hit.Transparency > 0.3 or not hit.CanCollide
         
-        if not res then return true end
-        
-        local hit = res.Instance
-        
-        if hit and hit:IsDescendantOf(targetChar) then
+        if isHamik or isSoft then
             return true
         end
-        
-        if hit then
-            local name = hit.Name:lower()
-            local isHamik = name:find("hamik") or name:find("paletka")
-            local isSoft = hit.Transparency > 0.3 or hit.CanCollide == false
-            
-            if isHamik or isSoft then
-                curOrigin = res.Position + unit * 0.2
-                continue
-            end
-        end
-        
-        return false
     end
     
     return false
@@ -263,6 +261,8 @@ local function FindTarget()
         UpdateActivePlayers()
     end
     
+    if #ActivePlayers == 0 then return nil end
+    
     local bestTarget = nil
     local bestDist = MAX_DISTANCE
     
@@ -273,26 +273,10 @@ local function FindTarget()
         local dist = (data.rootPart.Position - myHead.Position).Magnitude
         if dist > bestDist then continue end
         
-        -- Check visibility of any part first
-        local visible = false
-        local visibleParts = {
-            "Head", "UpperTorso", "LowerTorso", "Torso", "HumanoidRootPart",
-            "LeftUpperArm", "RightUpperArm", "LeftUpperLeg", "RightUpperLeg"
-        }
-        
-        for _, partName in ipairs(visibleParts) do
-            local p = data.character:FindFirstChild(partName)
-            if p and IsPartVisible(p, data.character) then
-                visible = true
-                break
-            end
-        end
-        
-        if not visible then continue end
-        
         -- Find best hitbox based on settings
         local targetPart = nil
         
+        -- Try head first
         if RageModule.Settings.Hitboxes.Head then
             local head = data.character:FindFirstChild("Head")
             if head and IsPartVisible(head, data.character) then
@@ -303,6 +287,7 @@ local function FindTarget()
             end
         end
         
+        -- Try body if no head
         if not targetPart and RageModule.Settings.Hitboxes.Body then
             for _, partName in ipairs({"UpperTorso", "LowerTorso", "Torso", "HumanoidRootPart"}) do
                 local part = data.character:FindFirstChild(partName)
@@ -316,6 +301,7 @@ local function FindTarget()
             end
         end
         
+        -- Try arms if still nothing
         if not targetPart and RageModule.Settings.Hitboxes.Arms then
             for _, partName in ipairs({"LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm"}) do
                 local part = data.character:FindFirstChild(partName)
@@ -329,6 +315,7 @@ local function FindTarget()
             end
         end
         
+        -- Try legs as last resort
         if not targetPart and RageModule.Settings.Hitboxes.Legs then
             for _, partName in ipairs({"LeftUpperLeg", "RightUpperLeg", "LeftLowerLeg", "RightLowerLeg", "Left Leg", "Right Leg"}) do
                 local part = data.character:FindFirstChild(partName)
@@ -411,13 +398,22 @@ local function DisableAntiAim(direction)
 end
 
 local function PerformShot(target)
-    if IsShooting then return end
+    if IsShooting then
+        if DEBUG_MODE then print("[Rage] Already shooting, skipping...") end
+        return
+    end
     
     local now = tick()
-    if now - LastShotTime < FIRE_RATE then return end
+    if now - LastShotTime < FIRE_RATE then
+        if DEBUG_MODE then print("[Rage] Fire rate cooldown:", FIRE_RATE - (now - LastShotTime)) end
+        return
+    end
     
     local tool = GetToolComponents()
-    if not tool then return end
+    if not tool then
+        if DEBUG_MODE then print("[Rage] No tool found!") end
+        return
+    end
     
     local char = LocalPlayer.Character
     if not char then return end
@@ -425,10 +421,17 @@ local function PerformShot(target)
     local head = char:FindFirstChild("Head")
     if not head then return end
     
-    if not CheckHitChance() then return end
+    if not CheckHitChance() then
+        if DEBUG_MODE then print("[Rage] Failed hitchance") end
+        return
+    end
     
     IsShooting = true
     LastShotTime = now
+    
+    if DEBUG_MODE then
+        print("[Rage] SHOOTING at", target.player.Name)
+    end
     
     -- Update ping
     if now - LastPingUpdate >= 1 then
@@ -461,19 +464,25 @@ local function PerformShot(target)
         task.wait(0.05)
         
         if RageModule.Settings.DoubleTap then
-            pcall(function()
+            local success1 = pcall(function()
                 tool.fireShot:FireServer(origin, direction, target.targetPart)
             end)
+            
+            if DEBUG_MODE then print("[Rage] First shot:", success1) end
             
             task.wait(0.05)
             
-            pcall(function()
+            local success2 = pcall(function()
                 tool.fireShot:FireServer(origin, direction, target.targetPart)
             end)
+            
+            if DEBUG_MODE then print("[Rage] Second shot:", success2) end
         else
-            pcall(function()
+            local success = pcall(function()
                 tool.fireShot:FireServer(origin, direction, target.targetPart)
             end)
+            
+            if DEBUG_MODE then print("[Rage] Shot fired:", success) end
         end
         
         task.wait(0.1)
@@ -487,6 +496,11 @@ local Connection = nil
 function RageModule:Start()
     if Connection then return end
     
+    if DEBUG_MODE then
+        print("[Rage] Starting ragebot...")
+        print("[Rage] Settings:", RageModule.Settings.Enabled, RageModule.Settings.AutoFire)
+    end
+    
     Connection = RunService.Heartbeat:Connect(function()
         if not RageModule.Settings.Enabled then
             CurrentTarget = nil
@@ -498,19 +512,21 @@ function RageModule:Start()
             return
         end
         
-        -- Don't shoot in air unless configured
-        if IsInAir() and not RageModule.Settings.AutoFire then
-            return
-        end
-        
         if IsShooting then return end
         
         local target = FindTarget()
         CurrentTarget = target
         
+        if target and DEBUG_MODE then
+            print("[Rage] Found target:", target.player.Name, "Part:", target.targetPart.Name, "Distance:", math.floor(target.distance))
+        end
+        
         if not target then return end
         
         if RageModule.Settings.AutoFire then
+            if DEBUG_MODE then
+                print("[Rage] Attempting to shoot...")
+            end
             PerformShot(target)
         end
     end)
