@@ -106,10 +106,6 @@ local LastCacheUpdate = 0
 
 -- Performance: Cache local character
 local function UpdateLocalCache()
-    local now = tick()
-    if now - LastCacheUpdate < 0.1 then return end
-    
-    LastCacheUpdate = now
     CachedLocalCharacter = LocalPlayer.Character
     if CachedLocalCharacter then
         CachedLocalHead = CachedLocalCharacter:FindFirstChild("Head")
@@ -292,7 +288,7 @@ local function FindBestTarget()
     if not IsPlayerAlive() or not CachedLocalHead then return nil end
     
     local now = tick()
-    if now - LastPlayerUpdate >= 1.0 then
+    if now - LastPlayerUpdate >= 0.5 then
         LastPlayerUpdate = now
         UpdateActivePlayers()
     end
@@ -420,7 +416,9 @@ end
 -- Optimized shooting
 local function PerformShot(target)
     if IsShooting then return end
-    if tick() - LastShotTime < 1.3 then return end
+    
+    local now = tick()
+    if now - LastShotTime < 1.3 then return end
     
     local toolComponents = GetToolComponents()
     if not toolComponents or not CachedLocalHead then return end
@@ -428,40 +426,44 @@ local function PerformShot(target)
     if not CheckHitChance() then return end
     
     IsShooting = true
+    LastShotTime = now
     
     local shootDirection = (target.predictedPos - CachedLocalHead.Position).Unit
     
     task.spawn(function()
+        -- Apply auto stop
         if RageModule.Settings.AutoStop and RageModule.Settings.AutoStopModes.Early then
             ApplyAutoStop()
         end
         
+        -- Rotate camera if needed
         if RageModule.Settings.RotateCamera and not RageModule.Settings.SilentAim then
             CurrentCamera.CFrame = CFrame.new(CurrentCamera.CFrame.Position, target.predictedPos)
         end
         
+        -- Disable anti-aim
         DisableAntiAim(shootDirection)
         
+        task.wait(0.05)
+        
+        -- Fire shot
         if RageModule.Settings.DoubleTap then
-            local success1 = pcall(function()
+            -- First shot
+            pcall(function()
                 toolComponents.fireShot:FireServer(CachedLocalHead.Position, shootDirection, target.targetPart)
             end)
             
-            if success1 then
-                LastShotTime = tick()
-                task.wait(0.05)
-                pcall(function()
-                    toolComponents.fireShot:FireServer(CachedLocalHead.Position, shootDirection, target.targetPart)
-                end)
-            end
+            task.wait(0.05)
+            
+            -- Second shot
+            pcall(function()
+                toolComponents.fireShot:FireServer(CachedLocalHead.Position, shootDirection, target.targetPart)
+            end)
         else
-            local success = pcall(function()
+            -- Single shot
+            pcall(function()
                 toolComponents.fireShot:FireServer(CachedLocalHead.Position, shootDirection, target.targetPart)
             end)
-            
-            if success then
-                LastShotTime = tick()
-            end
         end
         
         task.wait(0.1)
@@ -471,10 +473,14 @@ end
 
 -- Main loop (optimized)
 local Connection = nil
-local FrameCounter = 0
+local DebugMode = false -- Включите для отладки
 
 function RageModule:Start()
     if Connection then return end
+    
+    if DebugMode then
+        print("[Rage] Starting ragebot...")
+    end
     
     Connection = RunService.RenderStepped:Connect(function()
         if not RageModule.Settings.Enabled then
@@ -482,7 +488,7 @@ function RageModule:Start()
             return
         end
         
-        -- Update cache every frame
+        -- Update cache
         UpdateLocalCache()
         
         if not IsPlayerAlive() then
@@ -492,16 +498,20 @@ function RageModule:Start()
         
         if IsShooting then return end
         
-        -- Throttle target finding (every 2 frames for performance)
-        FrameCounter = FrameCounter + 1
-        if FrameCounter % 2 ~= 0 then return end
-        
+        -- Find target
         local target = FindBestTarget()
         CurrentTarget = target
+        
+        if target and DebugMode then
+            print("[Rage] Target found:", target.player.Name, "Distance:", math.floor(target.distance))
+        end
         
         if not target then return end
         
         if RageModule.Settings.AutoFire then
+            if DebugMode then
+                print("[Rage] Attempting to shoot...")
+            end
             PerformShot(target)
         end
     end)
@@ -513,7 +523,6 @@ function RageModule:Stop()
         Connection = nil
     end
     CurrentTarget = nil
-    FrameCounter = 0
 end
 
 function RageModule:GetCurrentTarget()
