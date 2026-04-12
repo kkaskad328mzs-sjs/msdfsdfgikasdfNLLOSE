@@ -1,15 +1,9 @@
---[[
-    Neverlose Rage Module
-    Based on Nemesis logic - optimized and working
-]]
-
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
 local LocalPlayer = Players.LocalPlayer
-local CurrentCamera = Workspace.CurrentCamera
+local Camera = Workspace.CurrentCamera
 
 local RageModule = {}
 RageModule.Settings = {
@@ -23,526 +17,413 @@ RageModule.Settings = {
     HitChance = 100,
     MinDamage = 0,
     Prediction = true,
-    PredictionStrength = 1.2,
+    PredictionStrength = 0.25,
     PingCompensation = true,
     AutoStop = true,
     DoubleTap = false,
     WallCheck = true
 }
-
--- Constants
+local FIRE_RATE = 1.3
 local BULLET_SPEED = 800
 local BASE_DAMAGE = 54
-local MAX_DISTANCE = 1000
-local FIRE_RATE = 1.3
-
--- Damage multipliers
-local BODY_PART_MULTIPLIERS = {
-    Head = 4.0,
-    UpperTorso = 1.0,
-    LowerTorso = 1.0,
-    Torso = 1.0,
-    HumanoidRootPart = 1.0,
-    LeftUpperArm = 0.75,
-    LeftLowerArm = 0.75,
-    LeftHand = 0.75,
-    RightUpperArm = 0.75,
-    RightLowerArm = 0.75,
-    RightHand = 0.75,
-    LeftUpperLeg = 0.6,
-    LeftLowerLeg = 0.6,
-    LeftFoot = 0.6,
-    RightUpperLeg = 0.6,
-    RightLowerLeg = 0.6,
-    RightFoot = 0.6,
-    ["Left Leg"] = 0.6,
-    ["Right Leg"] = 0.6
+local DAMAGE_MULTS = {
+    Head = 4, UpperTorso = 1, LowerTorso = 1, Torso = 1, HumanoidRootPart = 1,
+    LeftUpperArm = 0.75, LeftLowerArm = 0.75, RightUpperArm = 0.75, RightLowerArm = 0.75,
+    LeftUpperLeg = 0.6, LeftLowerLeg = 0.6, RightUpperLeg = 0.6, RightLowerLeg = 0.6,
+    ["Left Leg"] = 0.6, ["Right Leg"] = 0.6
 }
-
--- State
-local LastShotTime = 0
-local IsShooting = false
-local ActivePlayers = {}
-local LastPlayerUpdate = 0
-local LastPingUpdate = 0
-local CurrentPing = 0
-local Random = Random.new()
-local CurrentTarget = nil
-local DEBUG_MODE = true -- Включить для отладки
-
--- Helper functions
-local function IsAlive()
-    local char = LocalPlayer.Character
-    if not char then return false end
-    local hum = char:FindFirstChild("Humanoid")
-    return hum and hum.Health > 0
-end
-
-local function IsInAir()
-    local char = LocalPlayer.Character
-    if not char then return true end
-    
-    local hum = char:FindFirstChild("Humanoid")
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hum or not hrp then return true end
-    
-    if hum.FloorMaterial == Enum.Material.Air then
-        return true
-    end
-    
-    if math.abs(hrp.AssemblyLinearVelocity.Y) > 2 then
-        return true
-    end
-    
-    return false
-end
-
-local function GetToolComponents()
+local lastShot = 0
+local shooting = false
+local currentTarget = nil
+local connection = nil
+local activePlayers = {}
+local lastPlayerUpdate = 0
+local targetLostTime = 0
+local targetAcquired = false
+local function getTool()
     local char = LocalPlayer.Character
     if not char then return nil end
-    
-    for _, item in pairs(char:GetChildren()) do
-        if item:IsA("Tool") then
-            local remotes = item:FindFirstChild("Remotes")
-            if remotes then
-                local fireShot = remotes:FindFirstChild("FireShot")
-                if fireShot then
-                    return {type = "AWP", fireShot = fireShot, tool = item}
-                end
-            end
-        end
-    end
-    
-    return nil
+    local tool = char:FindFirstChildOfClass("Tool")
+    if not tool then return nil end
+    local remotes = tool:FindFirstChild("Remotes")
+    if not remotes then return nil end
+    local fireShot = remotes:FindFirstChild("FireShot")
+    if not fireShot then return nil end
+    return fireShot
 end
-
-local function CalculatePotentialDamage(partName, distance)
-    local multiplier = BODY_PART_MULTIPLIERS[partName] or 0.5
-    local damage = BASE_DAMAGE * multiplier
-    
-    if distance > 300 then
-        damage = damage * 0.3
-    elseif distance > 200 then
-        damage = damage * 0.5
-    elseif distance > 100 then
-        damage = damage * 0.8
+local function calcDamage(partName, dist)
+    local mult = DAMAGE_MULTS[partName] or 0.5
+    local dmg = BASE_DAMAGE * mult
+    if dist > 300 then
+        dmg = dmg * 0.3
+    elseif dist > 200 then
+        dmg = dmg * 0.5
+    elseif dist > 100 then
+        dmg = dmg * 0.8
     end
-    
-    return math.floor(damage)
+    return math.floor(dmg)
 end
-
-local function IsPartVisible(targetPart, targetChar)
-    if not targetPart or not targetPart.Parent then return false end
-    if not IsAlive() then return false end
-    
-    local myChar = LocalPlayer.Character
-    if not myChar then return false end
-    local myHead = myChar:FindFirstChild("Head")
-    if not myHead then return false end
-    
-    local origin = myHead.Position
-    local targetPos = targetPart.Position
-    local dir = targetPos - origin
-    local dist = dir.Magnitude
-    
-    if dist < 0.1 then return true end
-    if dist > MAX_DISTANCE then return false end
-    
-    -- Simple wall check first
-    if not RageModule.Settings.WallCheck then
-        return true
+local function canShootThrough(part)
+    if not part or not part:IsA("BasePart") then return false end
+    if part:IsA("WedgePart") then return true end
+    local name = part.Name:lower()
+    if name:find("hamik") or name:find("paletka") then return true end
+    if part.Parent then
+        local parentName = part.Parent.Name:lower()
+        if parentName:find("hamik") or parentName:find("paletka") then return true end
     end
-    
-    local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = {myChar, targetChar}
-    params.IgnoreWater = true
-    
-    local result = Workspace:Raycast(origin, dir, params)
-    
-    if not result then return true end
-    
-    -- If hit target, it's visible
-    if result.Instance:IsDescendantOf(targetChar) then
-        return true
-    end
-    
-    -- Check if can pass through
-    local hit = result.Instance
-    if hit then
-        local name = hit.Name:lower()
-        local isHamik = name:find("hamik") or name:find("paletka")
-        local isSoft = hit.Transparency > 0.3 or not hit.CanCollide
-        
-        if isHamik or isSoft then
-            return true
-        end
-    end
-    
+    if part.Transparency > 0.2 then return true end
+    if not part.CanCollide then return true end
     return false
 end
-
-local function PredictPosition(part, rootPart)
-    if not RageModule.Settings.Prediction or not rootPart then
+local function isPartOfChar(part)
+    if not part or not part:IsA("BasePart") then return false end
+    local parent = part.Parent
+    if not parent then return false end
+    if parent:FindFirstChild("Humanoid") then return true end
+    if parent:IsA("Accessory") or parent:IsA("Hat") then return true end
+    return false
+end
+local function strictWallCheck(from, to, ignoreChar, targetChar)
+    if not from or not to then return false end
+    local dir = to - from
+    local dist = dir.Magnitude
+    if dist < 0.1 or dist > 1000 then return false end
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = {ignoreChar, targetChar}
+    params.IgnoreWater = true
+    local result = Workspace:Raycast(from, dir, params)
+    if not result then return true end
+    if result.Instance:IsDescendantOf(targetChar) then return true end
+    if canShootThrough(result.Instance) or isPartOfChar(result.Instance) then
+        local newFrom = result.Position + dir.Unit * 0.1
+        local newDir = to - newFrom
+        if newDir.Magnitude < 0.1 then return true end
+        params.FilterDescendantsInstances = {ignoreChar, targetChar, result.Instance}
+        local result2 = Workspace:Raycast(newFrom, newDir, params)
+        if not result2 then return true end
+        if result2.Instance:IsDescendantOf(targetChar) then return true end
+        return false
+    end
+    return false
+end
+local function multiPointWallCheck(from, to, ignoreChar, targetChar)
+    if not from or not to or not ignoreChar or not targetChar then return false end
+    if strictWallCheck(from, to, ignoreChar, targetChar) then return true end
+    local offsets = {Vector3.new(0, 0.3, 0), Vector3.new(0, -0.3, 0)}
+    for _, offset in ipairs(offsets) do
+        if strictWallCheck(from, to + offset, ignoreChar, targetChar) then return true end
+    end
+    return false
+end
+local function predict(part, root)
+    if not RageModule.Settings.Prediction or not root then
         return part.Position
     end
-    
-    local velocity = rootPart.AssemblyLinearVelocity or Vector3.zero
-    if velocity.Magnitude < 2 then return part.Position end
-    
-    -- Horizontal velocity only (like nemesis)
-    local horizontalVelocity = Vector3.new(velocity.X, 0, velocity.Z)
-    
-    local distance = (part.Position - CurrentCamera.CFrame.Position).Magnitude
-    local travelTime = distance / BULLET_SPEED
-    local pingTime = CurrentPing / 2
-    local dynamicTime = math.clamp(pingTime + travelTime, 0.05, 0.22)
-    
-    local predictedPos = part.Position + (horizontalVelocity * dynamicTime * RageModule.Settings.PredictionStrength)
-    
-    return predictedPos
+    local vel = root.AssemblyLinearVelocity or Vector3.zero
+    if vel.Magnitude < 3 then return part.Position end
+    return part.Position + vel * RageModule.Settings.PredictionStrength
 end
-
-local function IsInFOV(position)
+local function inFOV(pos)
     if RageModule.Settings.FOV >= 360 then return true end
-    
-    local screenPos, onScreen = CurrentCamera:WorldToViewportPoint(position)
+    local screen, onScreen = Camera:WorldToViewportPoint(pos)
     if not onScreen then return false end
-    
-    local vpSize = CurrentCamera.ViewportSize
-    local dx = screenPos.X - vpSize.X * 0.5
-    local dy = screenPos.Y - vpSize.Y * 0.5
-    
+    local vp = Camera.ViewportSize
+    local dx = screen.X - vp.X / 2
+    local dy = screen.Y - vp.Y / 2
     return (dx * dx + dy * dy) <= (RageModule.Settings.FOV * RageModule.Settings.FOV)
 end
-
-local function CheckHitChance()
-    if RageModule.Settings.HitChance >= 100 then return true end
-    if RageModule.Settings.HitChance <= 0 then return false end
-    
-    return Random:NextInteger(1, 100) <= RageModule.Settings.HitChance
+local function isGrounded(hum, root)
+    if not hum or not root then return false end
+    if hum.FloorMaterial ~= Enum.Material.Air then return true end
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = {LocalPlayer.Character}
+    params.IgnoreWater = true
+    local result = Workspace:Raycast(root.Position, Vector3.new(0, -3.5, 0), params)
+    return result ~= nil
 end
-
-local function UpdateActivePlayers()
-    table.clear(ActivePlayers)
-    
-    for _, targetPlayer in ipairs(Players:GetPlayers()) do
-        if targetPlayer ~= LocalPlayer then
-            -- Team check
-            if not targetPlayer.Team or not LocalPlayer.Team or targetPlayer.Team ~= LocalPlayer.Team then
-                local targetChar = targetPlayer.Character
-                if targetChar then
-                    local hum = targetChar:FindFirstChild("Humanoid")
-                    local rootPart = targetChar:FindFirstChild("HumanoidRootPart")
-                    if hum and hum.Health > 0 and rootPart then
-                        table.insert(ActivePlayers, {
-                            player = targetPlayer,
-                            character = targetChar,
-                            humanoid = hum,
-                            rootPart = rootPart
-                        })
+local function isJumping(hum)
+    if not hum then return true end
+    local state = hum:GetState()
+    return state == Enum.HumanoidStateType.Jumping or
+           state == Enum.HumanoidStateType.Freefall or
+           state == Enum.HumanoidStateType.FallingDown
+end
+local function updateActivePlayers()
+    table.clear(activePlayers)
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then
+            if not plr.Team or not LocalPlayer.Team or plr.Team ~= LocalPlayer.Team then
+                local char = plr.Character
+                if char then
+                    local hum = char:FindFirstChild("Humanoid")
+                    if hum and hum.Health > 0 then
+                        local root = char:FindFirstChild("HumanoidRootPart")
+                        if root then
+                            table.insert(activePlayers, {
+                                player = plr,
+                                character = char,
+                                humanoid = hum,
+                                rootPart = root
+                            })
+                        end
                     end
                 end
             end
         end
     end
 end
-
-local function FindTarget()
-    if not IsAlive() then return nil end
-    
+local function findTarget()
     local char = LocalPlayer.Character
-    local myHead = char and char:FindFirstChild("Head")
-    if not myHead then return nil end
-    
+    if not char then return nil end
+    local hum = char:FindFirstChild("Humanoid")
+    if not hum or hum.Health <= 0 then return nil end
     local now = tick()
-    if now - LastPlayerUpdate >= 0.5 then
-        LastPlayerUpdate = now
-        UpdateActivePlayers()
+    if now - lastPlayerUpdate >= 0.5 then
+        lastPlayerUpdate = now
+        updateActivePlayers()
     end
-    
-    if #ActivePlayers == 0 then return nil end
-    
-    local bestTarget = nil
-    local bestDist = MAX_DISTANCE
-    
-    for _, data in ipairs(ActivePlayers) do
-        if not data.humanoid or data.humanoid.Health <= 0 then continue end
-        if not data.rootPart or not data.rootPart.Parent then continue end
-        
-        local dist = (data.rootPart.Position - myHead.Position).Magnitude
-        if dist > bestDist then continue end
-        
-        -- Find best hitbox based on settings
-        local targetPart = nil
-        
-        -- Try head first
+    if #activePlayers == 0 then return nil end
+    local head = char:FindFirstChild("Head")
+    if not head then return nil end
+    local best = nil
+    local bestScore = -math.huge
+    for _, data in ipairs(activePlayers) do
+        local tChar = data.character
+        local tRoot = data.rootPart
+        local tHum = data.humanoid
+        local parts = {}
         if RageModule.Settings.Hitboxes.Head then
-            local head = data.character:FindFirstChild("Head")
-            if head and IsPartVisible(head, data.character) then
-                local damage = CalculatePotentialDamage("Head", dist)
-                if damage >= RageModule.Settings.MinDamage then
-                    targetPart = head
-                end
-            end
+            table.insert(parts, {name = "Head", priority = 4})
         end
-        
-        -- Try body if no head
-        if not targetPart and RageModule.Settings.Hitboxes.Body then
-            for _, partName in ipairs({"UpperTorso", "LowerTorso", "Torso", "HumanoidRootPart"}) do
-                local part = data.character:FindFirstChild(partName)
-                if part and IsPartVisible(part, data.character) then
-                    local damage = CalculatePotentialDamage(partName, dist)
-                    if damage >= RageModule.Settings.MinDamage then
-                        targetPart = part
-                        break
+        if RageModule.Settings.Hitboxes.Body then
+            table.insert(parts, {name = "UpperTorso", priority = 2})
+            table.insert(parts, {name = "LowerTorso", priority = 2})
+            table.insert(parts, {name = "Torso", priority = 2})
+        end
+        if RageModule.Settings.Hitboxes.Arms then
+            table.insert(parts, {name = "LeftUpperArm", priority = 1})
+            table.insert(parts, {name = "RightUpperArm", priority = 1})
+        end
+        if RageModule.Settings.Hitboxes.Legs then
+            table.insert(parts, {name = "LeftUpperLeg", priority = 1})
+            table.insert(parts, {name = "RightUpperLeg", priority = 1})
+        end
+        for _, pData in ipairs(parts) do
+            local part = tChar:FindFirstChild(pData.name)
+            if not part then continue end
+            local predPos = predict(part, tRoot)
+            if not inFOV(predPos) then continue end
+            local dist = (head.Position - predPos).Magnitude
+            local dmg = calcDamage(pData.name, dist)
+            if dmg < RageModule.Settings.MinDamage then continue end
+            if RageModule.Settings.WallCheck then
+                if not multiPointWallCheck(head.Position, predPos, char, tChar) then
+                    if not RageModule.Settings.AimThroughWalls then
+                        continue
                     end
                 end
             end
-        end
-        
-        -- Try arms if still nothing
-        if not targetPart and RageModule.Settings.Hitboxes.Arms then
-            for _, partName in ipairs({"LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm"}) do
-                local part = data.character:FindFirstChild(partName)
-                if part and IsPartVisible(part, data.character) then
-                    local damage = CalculatePotentialDamage(partName, dist)
-                    if damage >= RageModule.Settings.MinDamage then
-                        targetPart = part
-                        break
-                    end
-                end
+            local score = dmg * pData.priority - dist * 0.1
+            if score > bestScore then
+                bestScore = score
+                best = {
+                    player = data.player,
+                    character = tChar,
+                    part = part,
+                    root = tRoot,
+                    humanoid = tHum,
+                    predictedPos = predPos,
+                    distance = dist
+                }
             end
         end
-        
-        -- Try legs as last resort
-        if not targetPart and RageModule.Settings.Hitboxes.Legs then
-            for _, partName in ipairs({"LeftUpperLeg", "RightUpperLeg", "LeftLowerLeg", "RightLowerLeg", "Left Leg", "Right Leg"}) do
-                local part = data.character:FindFirstChild(partName)
-                if part and IsPartVisible(part, data.character) then
-                    local damage = CalculatePotentialDamage(partName, dist)
-                    if damage >= RageModule.Settings.MinDamage then
-                        targetPart = part
-                        break
-                    end
-                end
-            end
-        end
-        
-        if not targetPart then continue end
-        
-        bestDist = dist
-        bestTarget = {
-            player = data.player,
-            character = data.character,
-            targetPart = targetPart,
-            rootPart = data.rootPart,
-            distance = dist
-        }
     end
-    
-    return bestTarget
+    return best
 end
-
-local function AutoStop()
+local function autoStop()
     if not RageModule.Settings.AutoStop then return end
-    
     local char = LocalPlayer.Character
     if not char then return end
-    
     local hum = char:FindFirstChild("Humanoid")
     local root = char:FindFirstChild("HumanoidRootPart")
-    
-    if not hum or not root or hum.FloorMaterial == Enum.Material.Air then return end
-    
+    if not hum or not root then return end
+    if hum.FloorMaterial == Enum.Material.Air then return end
     local bv = Instance.new("BodyVelocity")
-    bv.Name = "AutoStopVelocity"
     bv.Velocity = Vector3.zero
     bv.MaxForce = Vector3.new(100000, 0, 100000)
     bv.P = 10000
     bv.Parent = root
-    
-    local origSpeed = hum.WalkSpeed
+    local speed = hum.WalkSpeed
     hum.WalkSpeed = 0
-    
     task.delay(0.3, function()
-        if bv and bv.Parent then bv:Destroy() end
-        if hum and hum.Parent then hum.WalkSpeed = origSpeed end
+        if bv.Parent then bv:Destroy() end
+        if hum.Parent then hum.WalkSpeed = speed end
     end)
 end
-
-local function DisableAntiAim(direction)
+local function disableAA(dir)
     local char = LocalPlayer.Character
     if not char then return end
-    
     local root = char:FindFirstChild("HumanoidRootPart")
     if not root then return end
-    
     local aa1 = ReplicatedStorage:FindFirstChild("aahelp")
     local aa2 = ReplicatedStorage:FindFirstChild("aahelp1")
-    
     if aa1 then pcall(function() aa1:FireServer("disable") end) end
     if aa2 then pcall(function() aa2:FireServer("disable") end) end
-    
     task.wait(0.01)
-    
-    local flatDir = Vector3.new(direction.X, 0, direction.Z).Unit
-    if flatDir.Magnitude > 0.1 then
-        root.CFrame = CFrame.new(root.Position, root.Position + flatDir)
+    local flat = Vector3.new(dir.X, 0, dir.Z).Unit
+    if flat.Magnitude > 0.1 then
+        root.CFrame = CFrame.new(root.Position, root.Position + flat)
     end
-    
+    local rotation = root.CFrame.Rotation
     task.delay(0.15, function()
+        if char and root and root.Parent then
+            root.CFrame = CFrame.new(root.Position) * rotation
+        end
         if aa1 then pcall(function() aa1:FireServer("enable") end) end
         if aa2 then pcall(function() aa2:FireServer("enable") end) end
     end)
 end
-
-local function PerformShot(target)
-    if IsShooting then
-        if DEBUG_MODE then print("[Rage] Already shooting, skipping...") end
-        return
-    end
-    
+local function shoot(target)
+    if shooting then return end
     local now = tick()
-    if now - LastShotTime < FIRE_RATE then
-        if DEBUG_MODE then print("[Rage] Fire rate cooldown:", FIRE_RATE - (now - LastShotTime)) end
-        return
-    end
-    
-    local tool = GetToolComponents()
-    if not tool then
-        if DEBUG_MODE then print("[Rage] No tool found!") end
-        return
-    end
-    
+    if now - lastShot < FIRE_RATE then return end
+    local fireShot = getTool()
+    if not fireShot then return end
     local char = LocalPlayer.Character
     if not char then return end
-    
+    local hum = char:FindFirstChild("Humanoid")
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not hum or not root then return end
+    if isJumping(hum) then return end
+    if not isGrounded(hum, root) then return end
     local head = char:FindFirstChild("Head")
     if not head then return end
-    
-    if not CheckHitChance() then
-        if DEBUG_MODE then print("[Rage] Failed hitchance") end
-        return
+    if isJumping(target.humanoid) then return end
+    if RageModule.Settings.HitChance < 100 then
+        if math.random(1, 100) > RageModule.Settings.HitChance then
+            return
+        end
     end
-    
-    IsShooting = true
-    LastShotTime = now
-    
-    if DEBUG_MODE then
-        print("[Rage] SHOOTING at", target.player.Name)
-    end
-    
-    -- Update ping
-    if now - LastPingUpdate >= 1 then
-        LastPingUpdate = now
-        CurrentPing = LocalPlayer:GetNetworkPing() * 1000
-    end
-    
-    local targetPos = PredictPosition(target.targetPart, target.rootPart)
-    
+    shooting = true
     task.spawn(function()
-        if RageModule.Settings.AutoStop then
-            AutoStop()
+        if _G.FakeDuckActive then
+            _G.FakeDuckPause = true
+            task.wait(0.15)
         end
-        
-        if RageModule.Settings.RotateCamera and not RageModule.Settings.SilentAim then
-            CurrentCamera.CFrame = CFrame.new(CurrentCamera.CFrame.Position, targetPos)
-        end
-        
         local origin = head.Position
-        local dirVec = targetPos - origin
-        if dirVec.Magnitude < 0.01 then
-            IsShooting = false
-            return
-        end
-        
-        local direction = dirVec.Unit
-        
-        DisableAntiAim(direction)
-        
-        task.wait(0.05)
-        
-        if RageModule.Settings.DoubleTap then
-            local success1 = pcall(function()
-                tool.fireShot:FireServer(origin, direction, target.targetPart)
-            end)
-            
-            if DEBUG_MODE then print("[Rage] First shot:", success1) end
-            
-            task.wait(0.05)
-            
-            local success2 = pcall(function()
-                tool.fireShot:FireServer(origin, direction, target.targetPart)
-            end)
-            
-            if DEBUG_MODE then print("[Rage] Second shot:", success2) end
-        else
-            local success = pcall(function()
-                tool.fireShot:FireServer(origin, direction, target.targetPart)
-            end)
-            
-            if DEBUG_MODE then print("[Rage] Shot fired:", success) end
-        end
-        
-        task.wait(0.1)
-        IsShooting = false
-    end)
-end
-
--- Main loop
-local Connection = nil
-
-function RageModule:Start()
-    if Connection then return end
-    
-    if DEBUG_MODE then
-        print("[Rage] Starting ragebot...")
-        print("[Rage] Settings:", RageModule.Settings.Enabled, RageModule.Settings.AutoFire)
-    end
-    
-    Connection = RunService.Heartbeat:Connect(function()
-        if not RageModule.Settings.Enabled then
-            CurrentTarget = nil
-            return
-        end
-        
-        if not IsAlive() then
-            CurrentTarget = nil
-            return
-        end
-        
-        if IsShooting then return end
-        
-        local target = FindTarget()
-        CurrentTarget = target
-        
-        if target and DEBUG_MODE then
-            print("[Rage] Found target:", target.player.Name, "Part:", target.targetPart.Name, "Distance:", math.floor(target.distance))
-        end
-        
-        if not target then return end
-        
-        if RageModule.Settings.AutoFire then
-            if DEBUG_MODE then
-                print("[Rage] Attempting to shoot...")
+        local dir = (target.predictedPos - origin).Unit
+        if not multiPointWallCheck(origin, target.predictedPos, char, target.character) then
+            shooting = false
+            if _G.FakeDuckActive then
+                _G.FakeDuckPause = false
             end
-            PerformShot(target)
+            return
+        end
+        if RageModule.Settings.RotateCamera and not RageModule.Settings.SilentAim then
+            Camera.CFrame = CFrame.new(Camera.CFrame.Position, target.predictedPos)
+        end
+        if not RageModule.Settings.SilentAim then
+            disableAA(dir)
+        end
+        autoStop()
+        task.wait(0.05)
+        if RageModule.Settings.DoubleTap then
+            pcall(function()
+                fireShot:FireServer(origin, dir, target.part)
+            end)
+            task.wait(0.05)
+            pcall(function()
+                fireShot:FireServer(origin, dir, target.part)
+            end)
+        else
+            local success, err = pcall(function()
+                fireShot:FireServer(origin, dir, target.part)
+            end)
+            if success then
+                lastShot = now
+            else
+                warn("Shot failed:", err)
+            end
+        end
+        task.wait(0.1)
+        if _G.FakeDuckActive then
+            _G.FakeDuckPause = false
+        end
+        shooting = false
+    end)
+end
+local hit = ReplicatedStorage:FindFirstChild("hit")
+if hit then
+    hit.OnClientEvent:Connect(function()
+        autoStop()
+    end)
+end
+function RageModule:Start()
+    if connection then return end
+    connection = RunService.Heartbeat:Connect(function()
+        if not RageModule.Settings.Enabled then
+            currentTarget = nil
+            targetAcquired = false
+            return
+        end
+        if shooting then return end
+        local char = LocalPlayer.Character
+        if not char then
+            currentTarget = nil
+            return
+        end
+        local hum = char:FindFirstChild("Humanoid")
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if not hum or not root then
+            currentTarget = nil
+            return
+        end
+        if hum.Health <= 0 then
+            currentTarget = nil
+            return
+        end
+        if isJumping(hum) then
+            currentTarget = nil
+            return
+        end
+        if not isGrounded(hum, root) then
+            currentTarget = nil
+            return
+        end
+        local now = tick()
+        if now - lastShot < FIRE_RATE then return end
+        local target = findTarget()
+        if not target then
+            if not targetAcquired then
+                targetAcquired = true
+                targetLostTime = now
+            end
+            currentTarget = nil
+            return
+        end
+        if targetAcquired then
+            targetAcquired = false
+            targetLostTime = now
+        end
+        if now - targetLostTime < 0.05 then return end
+        currentTarget = target
+        if RageModule.Settings.AutoFire then
+            shoot(target)
         end
     end)
 end
-
 function RageModule:Stop()
-    if Connection then
-        Connection:Disconnect()
-        Connection = nil
+    if connection then
+        connection:Disconnect()
+        connection = nil
     end
-    CurrentTarget = nil
-    IsShooting = false
+    currentTarget = nil
+    shooting = false
 end
-
 function RageModule:GetCurrentTarget()
-    return CurrentTarget
+    return currentTarget
 end
-
 return RageModule
