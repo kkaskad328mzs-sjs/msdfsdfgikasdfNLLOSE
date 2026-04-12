@@ -198,30 +198,17 @@ end
 
 local function findTarget()
     local char = LocalPlayer.Character
-    if not char then 
-        warn("[Rage] No character")
-        return nil 
-    end
+    if not char then return nil end
     local hum = char:FindFirstChild("Humanoid")
-    if not hum or hum.Health <= 0 then 
-        warn("[Rage] No humanoid or dead")
-        return nil 
-    end
+    if not hum or hum.Health <= 0 then return nil end
     local now = tick()
     if now - lastPlayerUpdate >= 0.5 then
         lastPlayerUpdate = now
         updateActivePlayers()
-        print("[Rage] Updated players, count:", #activePlayers)
     end
-    if #activePlayers == 0 then 
-        warn("[Rage] No active players")
-        return nil 
-    end
+    if #activePlayers == 0 then return nil end
     local head = char:FindFirstChild("Head")
-    if not head then 
-        warn("[Rage] No head")
-        return nil 
-    end
+    if not head then return nil end
     local best = nil
     local bestScore = -math.huge
     for _, data in ipairs(activePlayers) do
@@ -247,38 +234,37 @@ local function findTarget()
         end
         for _, pData in ipairs(parts) do
             local part = tChar:FindFirstChild(pData.name)
-            if not part then continue end
-            local predPos = predict(part, tRoot)
-            if not inFOV(predPos) then continue end
-            local dist = (head.Position - predPos).Magnitude
-            local dmg = calcDamage(pData.name, dist)
-            if dmg < RageModule.Settings.MinDamage then continue end
-            if RageModule.Settings.WallCheck then
-                if not multiPointWallCheck(head.Position, predPos, char, tChar) then
-                    if not RageModule.Settings.AimThroughWalls then
-                        continue
+            if part then
+                local predPos = predict(part, tRoot)
+                local dist = (head.Position - predPos).Magnitude
+                if dist <= 1000 then
+                    if inFOV(predPos) then
+                        local dmg = calcDamage(pData.name, dist)
+                        if dmg >= RageModule.Settings.MinDamage then
+                            local canShoot = true
+                            if RageModule.Settings.WallCheck and not RageModule.Settings.AimThroughWalls then
+                                canShoot = multiPointWallCheck(head.Position, predPos, char, tChar)
+                            end
+                            if canShoot then
+                                local score = dmg * pData.priority - dist * 0.1
+                                if score > bestScore then
+                                    bestScore = score
+                                    best = {
+                                        player = data.player,
+                                        character = tChar,
+                                        part = part,
+                                        root = tRoot,
+                                        humanoid = tHum,
+                                        predictedPos = predPos,
+                                        distance = dist
+                                    }
+                                end
+                            end
+                        end
                     end
                 end
             end
-            local score = dmg * pData.priority - dist * 0.1
-            if score > bestScore then
-                bestScore = score
-                best = {
-                    player = data.player,
-                    character = tChar,
-                    part = part,
-                    root = tRoot,
-                    humanoid = tHum,
-                    predictedPos = predPos,
-                    distance = dist
-                }
-            end
         end
-    end
-    if best then
-        print("[Rage] Found target:", best.player.Name, "part:", best.part.Name)
-    else
-        warn("[Rage] No valid target found")
     end
     return best
 end
@@ -329,37 +315,20 @@ local function disableAA(dir)
 end
 
 local function shoot(target)
-    if shooting then 
-        warn("[Rage] Already shooting")
-        return 
-    end
+    if shooting then return end
     local now = tick()
-    if now - lastShot < FIRE_RATE then 
-        warn("[Rage] Fire rate cooldown")
-        return 
-    end
+    if now - lastShot < FIRE_RATE then return end
     local fireShot = getTool()
-    if not fireShot then 
-        warn("[Rage] No tool")
-        return 
-    end
+    if not fireShot then return end
     local char = LocalPlayer.Character
-    if not char then 
-        warn("[Rage] No character in shoot")
-        return 
-    end
+    if not char then return end
     local head = char:FindFirstChild("Head")
-    if not head then 
-        warn("[Rage] No head in shoot")
-        return 
-    end
+    if not head then return end
     if RageModule.Settings.HitChance < 100 then
         if math.random(1, 100) > RageModule.Settings.HitChance then
-            warn("[Rage] Hitchance failed")
             return
         end
     end
-    print("[Rage] Attempting to shoot at", target.player.Name)
     shooting = true
     lastShot = now
     task.spawn(function()
@@ -369,16 +338,6 @@ local function shoot(target)
         end
         local origin = head.Position
         local dir = (target.predictedPos - origin).Unit
-        if RageModule.Settings.WallCheck then
-            if not multiPointWallCheck(origin, target.predictedPos, char, target.character) then
-                warn("[Rage] Wall check failed")
-                shooting = false
-                if _G.FakeDuckActive then
-                    _G.FakeDuckPause = false
-                end
-                return
-            end
-        end
         if RageModule.Settings.RotateCamera and not RageModule.Settings.SilentAim then
             Camera.CFrame = CFrame.new(Camera.CFrame.Position, target.predictedPos)
         end
@@ -389,7 +348,6 @@ local function shoot(target)
             autoStop()
         end
         task.wait(0.05)
-        print("[Rage] Firing shot!")
         if RageModule.Settings.DoubleTap then
             pcall(function()
                 fireShot:FireServer(origin, dir, target.part)
@@ -399,14 +357,9 @@ local function shoot(target)
                 fireShot:FireServer(origin, dir, target.part)
             end)
         else
-            local success, err = pcall(function()
+            pcall(function()
                 fireShot:FireServer(origin, dir, target.part)
             end)
-            if not success then
-                warn("[Rage] Shot error:", err)
-            else
-                print("[Rage] Shot successful!")
-            end
         end
         task.wait(0.1)
         if _G.FakeDuckActive then
