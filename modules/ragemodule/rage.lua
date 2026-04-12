@@ -20,18 +20,27 @@ RageModule.Settings = {
     PredictionStrength = 0.25,
     PingCompensation = true,
     AutoStop = true,
+    AutoStopModes = {Early = true, InAir = false, BetweenShot = true, ForceAccurate = true},
     DoubleTap = false,
-    WallCheck = true
+    WallCheck = true,
+    TargetMode = "Highest Damage",
+    Multipoint = true,
+    MultipointScale = 0.75,
+    Backtrack = "Maximum",
+    DelayShot = false
 }
+
 local FIRE_RATE = 1.3
 local BULLET_SPEED = 800
 local BASE_DAMAGE = 54
+
 local DAMAGE_MULTS = {
     Head = 4, UpperTorso = 1, LowerTorso = 1, Torso = 1, HumanoidRootPart = 1,
     LeftUpperArm = 0.75, LeftLowerArm = 0.75, RightUpperArm = 0.75, RightLowerArm = 0.75,
     LeftUpperLeg = 0.6, LeftLowerLeg = 0.6, RightUpperLeg = 0.6, RightLowerLeg = 0.6,
     ["Left Leg"] = 0.6, ["Right Leg"] = 0.6
 }
+
 local lastShot = 0
 local shooting = false
 local currentTarget = nil
@@ -40,6 +49,7 @@ local activePlayers = {}
 local lastPlayerUpdate = 0
 local targetLostTime = 0
 local targetAcquired = false
+
 local function getTool()
     local char = LocalPlayer.Character
     if not char then return nil end
@@ -51,6 +61,7 @@ local function getTool()
     if not fireShot then return nil end
     return fireShot
 end
+
 local function calcDamage(partName, dist)
     local mult = DAMAGE_MULTS[partName] or 0.5
     local dmg = BASE_DAMAGE * mult
@@ -63,6 +74,7 @@ local function calcDamage(partName, dist)
     end
     return math.floor(dmg)
 end
+
 local function canShootThrough(part)
     if not part or not part:IsA("BasePart") then return false end
     if part:IsA("WedgePart") then return true end
@@ -76,6 +88,7 @@ local function canShootThrough(part)
     if not part.CanCollide then return true end
     return false
 end
+
 local function isPartOfChar(part)
     if not part or not part:IsA("BasePart") then return false end
     local parent = part.Parent
@@ -84,6 +97,7 @@ local function isPartOfChar(part)
     if parent:IsA("Accessory") or parent:IsA("Hat") then return true end
     return false
 end
+
 local function strictWallCheck(from, to, ignoreChar, targetChar)
     if not from or not to then return false end
     local dir = to - from
@@ -108,6 +122,7 @@ local function strictWallCheck(from, to, ignoreChar, targetChar)
     end
     return false
 end
+
 local function multiPointWallCheck(from, to, ignoreChar, targetChar)
     if not from or not to or not ignoreChar or not targetChar then return false end
     if strictWallCheck(from, to, ignoreChar, targetChar) then return true end
@@ -117,6 +132,7 @@ local function multiPointWallCheck(from, to, ignoreChar, targetChar)
     end
     return false
 end
+
 local function predict(part, root)
     if not RageModule.Settings.Prediction or not root then
         return part.Position
@@ -125,6 +141,7 @@ local function predict(part, root)
     if vel.Magnitude < 3 then return part.Position end
     return part.Position + vel * RageModule.Settings.PredictionStrength
 end
+
 local function inFOV(pos)
     if RageModule.Settings.FOV >= 360 then return true end
     local screen, onScreen = Camera:WorldToViewportPoint(pos)
@@ -134,6 +151,7 @@ local function inFOV(pos)
     local dy = screen.Y - vp.Y / 2
     return (dx * dx + dy * dy) <= (RageModule.Settings.FOV * RageModule.Settings.FOV)
 end
+
 local function isGrounded(hum, root)
     if not hum or not root then return false end
     if hum.FloorMaterial ~= Enum.Material.Air then return true end
@@ -144,6 +162,7 @@ local function isGrounded(hum, root)
     local result = Workspace:Raycast(root.Position, Vector3.new(0, -3.5, 0), params)
     return result ~= nil
 end
+
 local function isJumping(hum)
     if not hum then return true end
     local state = hum:GetState()
@@ -151,6 +170,7 @@ local function isJumping(hum)
            state == Enum.HumanoidStateType.Freefall or
            state == Enum.HumanoidStateType.FallingDown
 end
+
 local function updateActivePlayers()
     table.clear(activePlayers)
     for _, plr in ipairs(Players:GetPlayers()) do
@@ -175,19 +195,33 @@ local function updateActivePlayers()
         end
     end
 end
+
 local function findTarget()
     local char = LocalPlayer.Character
-    if not char then return nil end
+    if not char then 
+        warn("[Rage] No character")
+        return nil 
+    end
     local hum = char:FindFirstChild("Humanoid")
-    if not hum or hum.Health <= 0 then return nil end
+    if not hum or hum.Health <= 0 then 
+        warn("[Rage] No humanoid or dead")
+        return nil 
+    end
     local now = tick()
     if now - lastPlayerUpdate >= 0.5 then
         lastPlayerUpdate = now
         updateActivePlayers()
+        print("[Rage] Updated players, count:", #activePlayers)
     end
-    if #activePlayers == 0 then return nil end
+    if #activePlayers == 0 then 
+        warn("[Rage] No active players")
+        return nil 
+    end
     local head = char:FindFirstChild("Head")
-    if not head then return nil end
+    if not head then 
+        warn("[Rage] No head")
+        return nil 
+    end
     local best = nil
     local bestScore = -math.huge
     for _, data in ipairs(activePlayers) do
@@ -241,8 +275,14 @@ local function findTarget()
             end
         end
     end
+    if best then
+        print("[Rage] Found target:", best.player.Name, "part:", best.part.Name)
+    else
+        warn("[Rage] No valid target found")
+    end
     return best
 end
+
 local function autoStop()
     if not RageModule.Settings.AutoStop then return end
     local char = LocalPlayer.Character
@@ -263,6 +303,7 @@ local function autoStop()
         if hum.Parent then hum.WalkSpeed = speed end
     end)
 end
+
 local function disableAA(dir)
     local char = LocalPlayer.Character
     if not char then return end
@@ -286,28 +327,41 @@ local function disableAA(dir)
         if aa2 then pcall(function() aa2:FireServer("enable") end) end
     end)
 end
+
 local function shoot(target)
-    if shooting then return end
+    if shooting then 
+        warn("[Rage] Already shooting")
+        return 
+    end
     local now = tick()
-    if now - lastShot < FIRE_RATE then return end
+    if now - lastShot < FIRE_RATE then 
+        warn("[Rage] Fire rate cooldown")
+        return 
+    end
     local fireShot = getTool()
-    if not fireShot then return end
+    if not fireShot then 
+        warn("[Rage] No tool")
+        return 
+    end
     local char = LocalPlayer.Character
-    if not char then return end
-    local hum = char:FindFirstChild("Humanoid")
-    local root = char:FindFirstChild("HumanoidRootPart")
-    if not hum or not root then return end
-    if isJumping(hum) then return end
-    if not isGrounded(hum, root) then return end
+    if not char then 
+        warn("[Rage] No character in shoot")
+        return 
+    end
     local head = char:FindFirstChild("Head")
-    if not head then return end
-    if isJumping(target.humanoid) then return end
+    if not head then 
+        warn("[Rage] No head in shoot")
+        return 
+    end
     if RageModule.Settings.HitChance < 100 then
         if math.random(1, 100) > RageModule.Settings.HitChance then
+            warn("[Rage] Hitchance failed")
             return
         end
     end
+    print("[Rage] Attempting to shoot at", target.player.Name)
     shooting = true
+    lastShot = now
     task.spawn(function()
         if _G.FakeDuckActive then
             _G.FakeDuckPause = true
@@ -315,12 +369,15 @@ local function shoot(target)
         end
         local origin = head.Position
         local dir = (target.predictedPos - origin).Unit
-        if not multiPointWallCheck(origin, target.predictedPos, char, target.character) then
-            shooting = false
-            if _G.FakeDuckActive then
-                _G.FakeDuckPause = false
+        if RageModule.Settings.WallCheck then
+            if not multiPointWallCheck(origin, target.predictedPos, char, target.character) then
+                warn("[Rage] Wall check failed")
+                shooting = false
+                if _G.FakeDuckActive then
+                    _G.FakeDuckPause = false
+                end
+                return
             end
-            return
         end
         if RageModule.Settings.RotateCamera and not RageModule.Settings.SilentAim then
             Camera.CFrame = CFrame.new(Camera.CFrame.Position, target.predictedPos)
@@ -328,8 +385,11 @@ local function shoot(target)
         if not RageModule.Settings.SilentAim then
             disableAA(dir)
         end
-        autoStop()
+        if RageModule.Settings.AutoStop then
+            autoStop()
+        end
         task.wait(0.05)
+        print("[Rage] Firing shot!")
         if RageModule.Settings.DoubleTap then
             pcall(function()
                 fireShot:FireServer(origin, dir, target.part)
@@ -342,10 +402,10 @@ local function shoot(target)
             local success, err = pcall(function()
                 fireShot:FireServer(origin, dir, target.part)
             end)
-            if success then
-                lastShot = now
+            if not success then
+                warn("[Rage] Shot error:", err)
             else
-                warn("Shot failed:", err)
+                print("[Rage] Shot successful!")
             end
         end
         task.wait(0.1)
@@ -355,12 +415,14 @@ local function shoot(target)
         shooting = false
     end)
 end
+
 local hit = ReplicatedStorage:FindFirstChild("hit")
 if hit then
     hit.OnClientEvent:Connect(function()
         autoStop()
     end)
 end
+
 function RageModule:Start()
     if connection then return end
     connection = RunService.Heartbeat:Connect(function()
@@ -376,20 +438,7 @@ function RageModule:Start()
             return
         end
         local hum = char:FindFirstChild("Humanoid")
-        local root = char:FindFirstChild("HumanoidRootPart")
-        if not hum or not root then
-            currentTarget = nil
-            return
-        end
-        if hum.Health <= 0 then
-            currentTarget = nil
-            return
-        end
-        if isJumping(hum) then
-            currentTarget = nil
-            return
-        end
-        if not isGrounded(hum, root) then
+        if not hum or hum.Health <= 0 then
             currentTarget = nil
             return
         end
@@ -415,6 +464,7 @@ function RageModule:Start()
         end
     end)
 end
+
 function RageModule:Stop()
     if connection then
         connection:Disconnect()
@@ -423,7 +473,9 @@ function RageModule:Stop()
     currentTarget = nil
     shooting = false
 end
+
 function RageModule:GetCurrentTarget()
     return currentTarget
 end
+
 return RageModule
