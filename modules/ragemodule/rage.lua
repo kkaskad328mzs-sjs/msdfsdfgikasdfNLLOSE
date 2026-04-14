@@ -117,30 +117,150 @@ end
 
 local function AdvancedPrediction(targetPart, rootPart, distance)
     local vel = rootPart.AssemblyLinearVelocity
-    if vel.Magnitude < 1 then
+    if vel.Magnitude < 2 then
         return targetPart.Position
     end
     
-    local ping = LocalPlayer:GetNetworkPing()
-    local bulletTime = distance / 2000
-    local totalTime = ping + bulletTime
+    local horizontalVelocity = Vector3.new(vel.X, 0, vel.Z)
+    local bulletSpeed = 2000
+    local travelTime = distance / bulletSpeed
+    local pingTime = LocalPlayer:GetNetworkPing()
+    local dynamicTime = math.clamp(pingTime + travelTime, 0.05, 0.22)
     
-    local predictionStrength = 0.165
-    if vel.Magnitude > 10 then
-        predictionStrength = predictionStrength * 1.2
+    local predictionStrength = 1.2
+    if vel.Magnitude > 15 then
+        predictionStrength = predictionStrength * 1.1
     end
     
-    return targetPart.Position + vel * totalTime * predictionStrength
+    return targetPart.Position + (horizontalVelocity * dynamicTime * predictionStrength)
 end
 
-local function GetBestHitbox(character, distance)
-    if distance < 150 then
-        return character:FindFirstChild("Head")
-    elseif distance < 300 then
-        return character:FindFirstChild("Head") or character:FindFirstChild("UpperTorso")
-    else
-        return character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso") or character:FindFirstChild("HumanoidRootPart")
+local function IsPartVisible(targetPart, targetChar, myChar)
+    if not targetPart or not targetPart.Parent then return false end
+    if not myChar then return false end
+    
+    local myHead = myChar:FindFirstChild("Head")
+    if not myHead then return false end
+    
+    local origin = myHead.Position
+    local targetPos = targetPart.Position
+    local dir = targetPos - origin
+    local dist = dir.Magnitude
+    
+    if dist < 0.1 then return true end
+    if dist > 500 then return false end
+    
+    RayP.FilterDescendantsInstances = {myChar}
+    local unit = dir.Unit
+    local curOrigin = origin
+    
+    for _ = 1, 6 do
+        local res = Workspace:Raycast(curOrigin, targetPos - curOrigin, RayP)
+        
+        if not res then return true end
+        
+        local hit = res.Instance
+        
+        if hit and hit:IsDescendantOf(targetChar) then
+            return true
+        end
+        
+        if hit then
+            local name = hit.Name:lower()
+            local isWallbang = name:find("hamik") or name:find("paletka")
+            local isSoft = hit.Transparency > 0.3 or hit.CanCollide == false
+            
+            if isWallbang or isSoft then
+                curOrigin = res.Position + unit * 0.2
+                continue
+            end
+        end
+        
+        return false
     end
+    
+    return false
+end
+
+local function GetBestHitbox(character, distance, isInAir)
+    if isInAir then
+        return character:FindFirstChild("Head")
+    end
+    
+    local priorities = {}
+    
+    if RageModule.Settings.Hitboxes.Head then
+        table.insert(priorities, "Head")
+    end
+    if RageModule.Settings.Hitboxes.Body then
+        table.insert(priorities, "UpperTorso")
+        table.insert(priorities, "LowerTorso") 
+        table.insert(priorities, "Torso")
+    end
+    if RageModule.Settings.Hitboxes.Arms then
+        table.insert(priorities, "RightUpperArm")
+        table.insert(priorities, "LeftUpperArm")
+    end
+    if RageModule.Settings.Hitboxes.Legs then
+        table.insert(priorities, "RightUpperLeg")
+        table.insert(priorities, "LeftUpperLeg")
+    end
+    
+    if distance < 150 then
+        for _, partName in ipairs({"Head", "UpperTorso", "Torso"}) do
+            local part = character:FindFirstChild(partName)
+            if part and IsPartVisible(part, character, myChar) then
+                return part
+            end
+        end
+    end
+    
+    for _, partName in ipairs(priorities) do
+        local part = character:FindFirstChild(partName)
+        if part and IsPartVisible(part, character, myChar) then
+            return part
+        end
+    end
+    
+    return character:FindFirstChild("HumanoidRootPart")
+end
+
+local function IsInAir(humanoid, rootPart)
+    if not humanoid or not rootPart then return true end
+    
+    if humanoid.FloorMaterial == Enum.Material.Air then
+        return true
+    end
+    
+    if math.abs(rootPart.AssemblyLinearVelocity.Y) > 2 then
+        return true
+    end
+    
+    return false
+end
+
+local function CalculateDamage(partName, distance)
+    local multiplier = DAMAGE_MULTIPLIERS[partName] or 0.5
+    local damage = 54 * multiplier
+    
+    if distance > 300 then
+        damage = damage * 0.3
+    elseif distance > 200 then
+        damage = damage * 0.5
+    elseif distance > 100 then
+        damage = damage * 0.8
+    end
+    
+    return math.floor(damage)
+end
+
+local function CheckMinDamage(part, distance)
+    if RageModule.Settings.MinDamage <= 0 then
+        return true
+    end
+    
+    local damage = CalculateDamage(part.Name, distance)
+    return damage >= RageModule.Settings.MinDamage
 end
 
 local function SimpleResolver(player, rootPart)
@@ -192,13 +312,14 @@ local function UpdatePlayerData()
                     if dist < 500 then
                         count = count + 1
                         local isTeam = myTeam and (p.Team == myTeam or p.TeamColor == myColor)
+                        local inAir = IsInAir(h, r)
                         
                         playerData[count] = {
                             p = p, c = c, h = h, r = r,
                             head = c:FindFirstChild("Head"),
                             torso = c:FindFirstChild("UpperTorso") or c:FindFirstChild("Torso"),
-                            dist = dist, team = isTeam,
-                            bestHitbox = GetBestHitbox(c, dist)
+                            dist = dist, team = isTeam, inAir = inAir,
+                            bestHitbox = GetBestHitbox(c, dist, inAir)
                         }
                     end
                 end
@@ -206,19 +327,18 @@ local function UpdatePlayerData()
         end
     end
     
-    for i = 1, count - 1 do
-        for j = i + 1, count do
-            if playerData[j] and playerData[i] and playerData[j].dist < playerData[i].dist then
-                playerData[i], playerData[j] = playerData[j], playerData[i]
-            end
+    table.sort(playerData, function(a, b)
+        if a and b then
+            return a.dist < b.dist
         end
-    end
+        return false
+    end)
 end
 
 function RageModule:Start()
     if connection then return end
     
-    print("[Rage] Starting optimized ragebot...")
+    print("[Rage] Starting enhanced ragebot with nemesis improvements...")
     
     connection = RunService.Heartbeat:Connect(function()
         if not RageModule.Settings.Enabled then
@@ -235,28 +355,41 @@ function RageModule:Start()
         if RageModule.Settings.AutoFire and now - lastShot >= 0.08 then
             RayP.FilterDescendantsInstances = {myChar}
             local best = nil
+            local bestScore = -1
             
             for i = 1, 4 do
                 local d = playerData[i]
                 if d and not d.team and d.dist < 500 then
-                    local tgt = d.bestHitbox or d.head or d.torso or d.r
-                    if tgt then
-                        local predictedPos = AdvancedPrediction(tgt, d.r, d.dist)
-                        local dir = predictedPos - myHead.Position
-                        local res = Workspace:Raycast(myHead.Position, dir, RayP)
-                        
-                        if RageModule.Settings.WallCheck then
-                            if res and not res.Instance:IsDescendantOf(d.c) then
-                                continue
-                            end
+                    local tgt = d.bestHitbox
+                    if not tgt then continue end
+                    
+                    if not IsPartVisible(tgt, d.c, myChar) then
+                        continue
+                    end
+                    
+                    if not CheckMinDamage(tgt, d.dist) then
+                        continue
+                    end
+                    
+                    if RageModule.Settings.HitChance < 100 then
+                        local roll = math.random(1, 100)
+                        if roll > RageModule.Settings.HitChance then
+                            continue
                         end
-                        
-                        if not res or res.Instance:IsDescendantOf(d.c) then
-                            best = d
-                            best.predictedPos = predictedPos
-                            best.targetPart = tgt
-                            break
-                        end
+                    end
+                    
+                    local damage = CalculateDamage(tgt.Name, d.dist)
+                    local score = damage - d.dist * 0.02
+                    
+                    if d.inAir then
+                        score = score + 50
+                    end
+                    
+                    if score > bestScore then
+                        bestScore = score
+                        best = d
+                        best.targetPart = tgt
+                        best.damage = damage
                     end
                 end
             end
@@ -268,8 +401,8 @@ function RageModule:Start()
                     if aahelp1 then pcall(function() aahelp1:FireServer("disable") end) end
                     
                     local shootPos = myHead.Position
-                    local targetPos = best.predictedPos
-                    local direction = (targetPos - shootPos).Unit
+                    local predictedPos = AdvancedPrediction(best.targetPart, best.r, best.dist)
+                    local direction = (predictedPos - shootPos).Unit
                     
                     local success, err = pcall(function()
                         fs:FireServer(shootPos, direction, best.targetPart)
@@ -278,13 +411,16 @@ function RageModule:Start()
                     if success then
                         lastShot = now
                         currentTarget = best
-                        print("[Rage] Shot at", best.p.Name, "- Distance:", math.floor(best.dist))
                         
-                        task.delay(0.3, function()
+                        local statusText = best.inAir and " [AIRSHOT]" or ""
+                        print("[Rage] Enhanced shot at", best.p.Name, "- Damage:", best.damage, "- Distance:", math.floor(best.dist), statusText)
+                        
+                        task.delay(0.25, function()
                             if best.h.Health < (best.h.MaxHealth * 0.8) then
                                 print("[Rage] Hit confirmed!")
                             else
                                 RecordMiss(best.p)
+                                print("[Rage] Miss detected, adjusting resolver")
                             end
                         end)
                     else
