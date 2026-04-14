@@ -1,7 +1,6 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
 
 local RageModule = {}
@@ -35,110 +34,91 @@ local shooting = false
 local currentTarget = nil
 local connection = nil
 
-local function getToolComponents()
-    local char = LocalPlayer.Character
-    if not char then return nil end
+local function shoot(target)
+    if shooting then return end
     
-    for _, obj in pairs(char:GetChildren()) do
-        if obj:IsA("Tool") then
-            local remotes = obj:FindFirstChild("Remotes")
-            if remotes then
-                local fireShot = remotes:FindFirstChild("FireShot")
-                if fireShot then
-                    return {
-                        tool = obj,
-                        fireShot = fireShot,
-                        reload = remotes:FindFirstChild("Reload"),
-                        handle = obj:FindFirstChild("Handle")
-                    }
-                end
-            end
-        end
-    end
+    local now = tick()
+    if now - lastShot < 1.0 then return end
+    
+    local char = LocalPlayer.Character
+    if not char then return end
+    
+    local head = char:FindFirstChild("Head")
+    if not head then return end
     
     local tool = char:FindFirstChildOfClass("Tool")
-    if tool then
-        local remotes = tool:FindFirstChild("Remotes")
-        if remotes then
-            local fireShot = remotes:FindFirstChild("FireShot")
-            if fireShot then
-                return {
-                    tool = tool,
-                    fireShot = fireShot,
-                    reload = remotes:FindFirstChild("Reload"),
-                    handle = tool:FindFirstChild("Handle")
-                }
-            end
-        end
-        
-        for _, child in pairs(tool:GetChildren()) do
-            if child.Name:lower():find("fire") or child.Name:lower():find("shoot") then
-                return {
-                    tool = tool,
-                    fireShot = child,
-                    handle = tool:FindFirstChild("Handle")
-                }
-            end
-        end
+    if not tool then 
+        warn("[Rage] No tool equipped")
+        return 
     end
     
-    return nil
+    local remotes = tool:FindFirstChild("Remotes")
+    if not remotes then 
+        warn("[Rage] No Remotes folder in tool")
+        return 
+    end
+    
+    local fireShot = remotes:FindFirstChild("FireShot")
+    if not fireShot then 
+        warn("[Rage] No FireShot remote")
+        return 
+    end
+    
+    shooting = true
+    lastShot = now
+    
+    local origin = head.Position
+    local direction = (target.position - origin).Unit
+    
+    task.spawn(function()
+        local success, err = pcall(function()
+            fireShot:FireServer(origin, direction, target.part)
+        end)
+        
+        if success then
+            print("[Rage] ✓ Shot fired at", target.player.Name)
+        else
+            warn("[Rage] ✗ Shot failed:", err)
+        end
+        
+        task.wait(0.1)
+        shooting = false
+    end)
 end
 
 local function findTarget()
     local char = LocalPlayer.Character
     if not char then return nil end
+    
     local head = char:FindFirstChild("Head")
     if not head then return nil end
     
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer and plr.Character then
-            local tChar = plr.Character
-            local tHum = tChar:FindFirstChild("Humanoid")
-            local tRoot = tChar:FindFirstChild("HumanoidRootPart")
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local targetChar = player.Character
+            local humanoid = targetChar:FindFirstChild("Humanoid")
             
-            if tHum and tHum.Health > 0 and tRoot then
-                local targetPart = nil
+            if humanoid and humanoid.Health > 0 then
+                local part = nil
                 
                 if RageModule.Settings.Hitboxes.Head then
-                    targetPart = tChar:FindFirstChild("Head")
+                    part = targetChar:FindFirstChild("Head")
                 end
                 
-                if not targetPart and RageModule.Settings.Hitboxes.Body then
-                    targetPart = tChar:FindFirstChild("UpperTorso") or 
-                                tChar:FindFirstChild("Torso") or 
-                                tChar:FindFirstChild("LowerTorso")
+                if not part and RageModule.Settings.Hitboxes.Body then
+                    part = targetChar:FindFirstChild("UpperTorso") or 
+                           targetChar:FindFirstChild("Torso")
                 end
                 
-                if not targetPart and RageModule.Settings.Hitboxes.Arms then
-                    targetPart = tChar:FindFirstChild("LeftUpperArm") or 
-                                tChar:FindFirstChild("RightUpperArm")
-                end
-                
-                if not targetPart and RageModule.Settings.Hitboxes.Legs then
-                    targetPart = tChar:FindFirstChild("LeftUpperLeg") or 
-                                tChar:FindFirstChild("RightUpperLeg") or
-                                tChar:FindFirstChild("Left Leg") or
-                                tChar:FindFirstChild("Right Leg")
-                end
-                
-                if targetPart then
-                    local pos = targetPart.Position
-                    if RageModule.Settings.Prediction then
-                        local vel = tRoot.AssemblyLinearVelocity or Vector3.zero
-                        if vel.Magnitude >= 3 then
-                            pos = pos + vel * RageModule.Settings.PredictionStrength
-                        end
-                    end
-                    
-                    local dist = (head.Position - pos).Magnitude
-                    if dist <= 1000 then
+                if part then
+                    local distance = (head.Position - part.Position).Magnitude
+                    if distance <= 500 then
                         return {
-                            player = plr,
-                            character = tChar,
-                            targetPart = targetPart,
-                            position = pos,
-                            distance = dist
+                            player = player,
+                            character = targetChar,
+                            part = part,
+                            position = part.Position,
+                            distance = distance
                         }
                     end
                 end
@@ -149,41 +129,10 @@ local function findTarget()
     return nil
 end
 
-local function shoot(target)
-    if shooting then return end
-    
-    local now = tick()
-    if now - lastShot < 1.3 then return end
-    
-    local toolData = getToolComponents()
-    if not toolData then return end
-    
-    local char = LocalPlayer.Character
-    if not char then return end
-    
-    local head = char:FindFirstChild("Head")
-    if not head then return end
-    
-    shooting = true
-    lastShot = now
-    
-    local origin = head.Position
-    local direction = (target.position - origin).Unit
-    
-    local success, err = pcall(function()
-        toolData.fireShot:FireServer(origin, direction, target.targetPart)
-    end)
-    
-    if success then
-        print("[Rage] Shot fired at", target.player.Name)
-    end
-    
-    task.wait(0.1)
-    shooting = false
-end
-
 function RageModule:Start()
     if connection then return end
+    
+    print("[Rage] Starting ragebot...")
     
     connection = RunService.Heartbeat:Connect(function()
         if not RageModule.Settings.Enabled then
@@ -200,6 +149,8 @@ function RageModule:Start()
             shoot(target)
         end
     end)
+    
+    print("[Rage] Ragebot started!")
 end
 
 function RageModule:Stop()
@@ -209,6 +160,7 @@ function RageModule:Stop()
     end
     currentTarget = nil
     shooting = false
+    print("[Rage] Ragebot stopped!")
 end
 
 function RageModule:GetCurrentTarget()
