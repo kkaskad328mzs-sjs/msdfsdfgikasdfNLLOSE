@@ -69,20 +69,26 @@ RaycastParams_new.IgnoreWater = true
 local function getToolComponents()
     local Character = LocalPlayer.Character
     if not Character then
+        print("[Rage] No character")
         return nil
     end
     local Tool = Character:FindFirstChildOfClass("Tool")
     if not Tool then
+        print("[Rage] No tool equipped")
         return nil
     end
+    print("[Rage] Tool found:", Tool.Name)
     local Remotes = Tool:FindFirstChild("Remotes")
     if not Remotes then
+        print("[Rage] No Remotes folder in tool")
         return nil
     end
     local FireShot = Remotes:FindFirstChild("FireShot")
     if not FireShot then
+        print("[Rage] No FireShot remote in Remotes")
         return nil
     end
+    print("[Rage] FireShot remote found")
     return {
         tool = Tool,
         fireShot = FireShot,
@@ -277,6 +283,7 @@ local function findBestTarget()
     end
     
     if #activePlayers == 0 then
+        print("[Rage] No active players found")
         return nil
     end
     
@@ -350,6 +357,12 @@ local function findBestTarget()
         end
     end
     
+    if bestTarget then
+        print("[Rage] Target found:", bestTarget.player.Name, "Part:", bestTarget.targetPart.Name)
+    else
+        print("[Rage] No valid target found")
+    end
+    
     return bestTarget
 end
 
@@ -414,116 +427,67 @@ end
 function RageModule:Start()
     if connection then return end
     
+    print("[Rage] Starting ragebot...")
+    
     connection = RunService.RenderStepped:Connect(function()
         if not RageModule.Settings.Enabled then
-            currentTarget = nil
-            shooting = false
             return
         end
         
         if shooting then return end
         
         local Character = LocalPlayer.Character
-        if not Character then
-            currentTarget = nil
-            shooting = false
-            return
-        end
+        if not Character then return end
         
         local Humanoid = Character:FindFirstChild("Humanoid")
-        if not Humanoid or Humanoid.Health <= 0 then
-            currentTarget = nil
-            shooting = false
-            return
-        end
-        
-        local HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
-        if not HumanoidRootPart then
-            currentTarget = nil
-            shooting = false
-            return
-        end
-        
-        if isPlayerJumping(Humanoid) then
-            currentTarget = nil
-            return
-        end
-        
-        if not isGrounded(Humanoid, HumanoidRootPart) then
-            currentTarget = nil
-            return
-        end
+        if not Humanoid or Humanoid.Health <= 0 then return end
         
         local currentTime = tick()
-        if currentTime - lastShot < 1.3 then return end
-        
-        if shooting then return end
+        if currentTime - lastShot < 1.0 then return end
         
         local toolComponents = getToolComponents()
-        if not toolComponents then
-            currentTarget = nil
-            shooting = false
-            return
-        end
+        if not toolComponents then return end
         
-        local target = findBestTarget()
-        if not target then
-            currentTarget = nil
-            return
-        end
-        
-        currentTarget = target
-        
-        local predictedPos = predictPartPosition(target.targetPart, target.rootPart)
-        if not predictedPos then return end
-        
-        local myHead = Character:FindFirstChild("Head")
-        if not myHead then return end
-        
-        if isPlayerJumping(Humanoid) then return end
-        
-        shooting = true
-        
-        task.spawn(function()
-            if _G.FakeDuckActive then
-                _G.FakeDuckPause = true
-                task.wait(0.15)
-            end
-            
-            local Character = LocalPlayer.Character
-            local Head = Character and Character:FindFirstChild("Head")
-            if not Head then
-                shooting = false
-                return
-            end
-            
-            local Position = Head.Position
-            local Unit = (predictedPos - Position).Unit
-            
-            if multiPointWallCheck(Position, predictedPos, Character, target.character) then
-                if not isPlayerJumping(Humanoid) then
-                    if not RageModule.Settings.SilentAim then
-                        disableAntiAimsAndRotate(Unit)
-                    end
-                    
-                    local success, err = pcall(function()
-                        toolComponents.fireShot:FireServer(Position, Unit, target.targetPart)
-                    end)
-                    
-                    if success then
-                        lastShot = tick()
-                    else
-                        warn("AutoShoot Error:", err)
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character then
+                local targetChar = player.Character
+                local targetHead = targetChar:FindFirstChild("Head")
+                local targetHumanoid = targetChar:FindFirstChild("Humanoid")
+                
+                if targetHead and targetHumanoid and targetHumanoid.Health > 0 then
+                    local myHead = Character:FindFirstChild("Head")
+                    if myHead then
+                        local distance = (myHead.Position - targetHead.Position).Magnitude
+                        if distance < 500 then
+                            shooting = true
+                            
+                            task.spawn(function()
+                                local Position = myHead.Position
+                                local Unit = (targetHead.Position - Position).Unit
+                                
+                                print("[Rage] Attempting to shoot at", player.Name)
+                                
+                                local success, err = pcall(function()
+                                    toolComponents.fireShot:FireServer(Position, Unit, targetHead)
+                                end)
+                                
+                                if success then
+                                    lastShot = tick()
+                                    print("[Rage] Shot fired successfully at", player.Name)
+                                else
+                                    warn("[Rage] Shot failed:", err)
+                                end
+                                
+                                task.wait(0.1)
+                                shooting = false
+                            end)
+                            
+                            return
+                        end
                     end
                 end
             end
-            
-            task.wait(0.1)
-            if _G.FakeDuckActive then
-                _G.FakeDuckPause = false
-            end
-            shooting = false
-        end)
+        end
     end)
 end
 
