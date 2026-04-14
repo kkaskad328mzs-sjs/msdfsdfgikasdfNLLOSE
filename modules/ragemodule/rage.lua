@@ -35,123 +35,134 @@ local shooting = false
 local currentTarget = nil
 local connection = nil
 
-print("[RAGE DEBUG] Module loaded")
-
-local function getTool()
+local function getToolComponents()
     local char = LocalPlayer.Character
-    if not char then 
-        print("[RAGE DEBUG] No character")
-        return nil 
+    if not char then return nil end
+    
+    for _, obj in pairs(char:GetChildren()) do
+        if obj:IsA("Tool") then
+            local remotes = obj:FindFirstChild("Remotes")
+            if remotes then
+                local fireShot = remotes:FindFirstChild("FireShot")
+                if fireShot then
+                    return {
+                        tool = obj,
+                        fireShot = fireShot,
+                        reload = remotes:FindFirstChild("Reload"),
+                        handle = obj:FindFirstChild("Handle")
+                    }
+                end
+            end
+        end
     end
     
     local tool = char:FindFirstChildOfClass("Tool")
-    if not tool then 
-        print("[RAGE DEBUG] No tool found")
-        return nil 
+    if tool then
+        local remotes = tool:FindFirstChild("Remotes")
+        if remotes then
+            local fireShot = remotes:FindFirstChild("FireShot")
+            if fireShot then
+                return {
+                    tool = tool,
+                    fireShot = fireShot,
+                    reload = remotes:FindFirstChild("Reload"),
+                    handle = tool:FindFirstChild("Handle")
+                }
+            end
+        end
+        
+        for _, child in pairs(tool:GetChildren()) do
+            if child.Name:lower():find("fire") or child.Name:lower():find("shoot") then
+                return {
+                    tool = tool,
+                    fireShot = child,
+                    handle = tool:FindFirstChild("Handle")
+                }
+            end
+        end
     end
     
-    local remotes = tool:FindFirstChild("Remotes")
-    if not remotes then 
-        print("[RAGE DEBUG] No Remotes folder")
-        return nil 
-    end
-    
-    local fireShot = remotes:FindFirstChild("FireShot")
-    if not fireShot then 
-        print("[RAGE DEBUG] No FireShot remote")
-        return nil 
-    end
-    
-    print("[RAGE DEBUG] Tool found:", tool.Name)
-    return fireShot
+    return nil
 end
 
 local function findTarget()
-    print("[RAGE DEBUG] Looking for targets...")
-    
     local char = LocalPlayer.Character
-    if not char then 
-        print("[RAGE DEBUG] No local character")
-        return nil 
-    end
-    
+    if not char then return nil end
     local head = char:FindFirstChild("Head")
-    if not head then 
-        print("[RAGE DEBUG] No local head")
-        return nil 
-    end
-    
-    local playerCount = 0
-    local validTargets = 0
+    if not head then return nil end
     
     for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer then
-            playerCount = playerCount + 1
+        if plr ~= LocalPlayer and plr.Character then
             local tChar = plr.Character
-            if tChar then
-                local tHum = tChar:FindFirstChild("Humanoid")
-                local tRoot = tChar:FindFirstChild("HumanoidRootPart")
-                if tHum and tHum.Health > 0 and tRoot then
-                    validTargets = validTargets + 1
-                    local targetPart = tChar:FindFirstChild("Head")
-                    if not targetPart then
-                        targetPart = tChar:FindFirstChild("UpperTorso") or tChar:FindFirstChild("Torso")
-                    end
-                    if targetPart then
-                        local dist = (head.Position - targetPart.Position).Magnitude
-                        if dist <= 1000 then
-                            print("[RAGE DEBUG] Found target:", plr.Name, "distance:", math.floor(dist))
-                            return {
-                                player = plr,
-                                character = tChar,
-                                targetPart = targetPart,
-                                position = targetPart.Position,
-                                distance = dist
-                            }
+            local tHum = tChar:FindFirstChild("Humanoid")
+            local tRoot = tChar:FindFirstChild("HumanoidRootPart")
+            
+            if tHum and tHum.Health > 0 and tRoot then
+                local targetPart = nil
+                
+                if RageModule.Settings.Hitboxes.Head then
+                    targetPart = tChar:FindFirstChild("Head")
+                end
+                
+                if not targetPart and RageModule.Settings.Hitboxes.Body then
+                    targetPart = tChar:FindFirstChild("UpperTorso") or 
+                                tChar:FindFirstChild("Torso") or 
+                                tChar:FindFirstChild("LowerTorso")
+                end
+                
+                if not targetPart and RageModule.Settings.Hitboxes.Arms then
+                    targetPart = tChar:FindFirstChild("LeftUpperArm") or 
+                                tChar:FindFirstChild("RightUpperArm")
+                end
+                
+                if not targetPart and RageModule.Settings.Hitboxes.Legs then
+                    targetPart = tChar:FindFirstChild("LeftUpperLeg") or 
+                                tChar:FindFirstChild("RightUpperLeg") or
+                                tChar:FindFirstChild("Left Leg") or
+                                tChar:FindFirstChild("Right Leg")
+                end
+                
+                if targetPart then
+                    local pos = targetPart.Position
+                    if RageModule.Settings.Prediction then
+                        local vel = tRoot.AssemblyLinearVelocity or Vector3.zero
+                        if vel.Magnitude >= 3 then
+                            pos = pos + vel * RageModule.Settings.PredictionStrength
                         end
+                    end
+                    
+                    local dist = (head.Position - pos).Magnitude
+                    if dist <= 1000 then
+                        return {
+                            player = plr,
+                            character = tChar,
+                            targetPart = targetPart,
+                            position = pos,
+                            distance = dist
+                        }
                     end
                 end
             end
         end
     end
     
-    print("[RAGE DEBUG] Players:", playerCount, "Valid targets:", validTargets)
     return nil
 end
 
 local function shoot(target)
-    print("[RAGE DEBUG] ATTEMPTING SHOOT at", target.player.Name)
-    
-    if shooting then 
-        print("[RAGE DEBUG] Already shooting")
-        return 
-    end
+    if shooting then return end
     
     local now = tick()
-    if now - lastShot < 1.3 then 
-        print("[RAGE DEBUG] Cooldown active")
-        return 
-    end
+    if now - lastShot < 1.3 then return end
     
-    local fireShot = getTool()
-    if not fireShot then 
-        print("[RAGE DEBUG] No fireShot tool")
-        return 
-    end
+    local toolData = getToolComponents()
+    if not toolData then return end
     
     local char = LocalPlayer.Character
-    if not char then 
-        print("[RAGE DEBUG] No character in shoot")
-        return 
-    end
+    if not char then return end
     
     local head = char:FindFirstChild("Head")
-    if not head then 
-        print("[RAGE DEBUG] No head in shoot")
-        return 
-    end
-    
-    print("[RAGE DEBUG] All checks passed - FIRING!")
+    if not head then return end
     
     shooting = true
     lastShot = now
@@ -159,18 +170,12 @@ local function shoot(target)
     local origin = head.Position
     local direction = (target.position - origin).Unit
     
-    print("[RAGE DEBUG] Origin:", origin)
-    print("[RAGE DEBUG] Direction:", direction)
-    print("[RAGE DEBUG] Target part:", target.targetPart.Name)
-    
     local success, err = pcall(function()
-        fireShot:FireServer(origin, direction, target.targetPart)
+        toolData.fireShot:FireServer(origin, direction, target.targetPart)
     end)
     
     if success then
-        print("[RAGE DEBUG] ✓ SHOT FIRED SUCCESSFULLY!")
-    else
-        print("[RAGE DEBUG] ✗ SHOT FAILED:", err)
+        print("[Rage] Shot fired at", target.player.Name)
     end
     
     task.wait(0.1)
@@ -178,12 +183,7 @@ local function shoot(target)
 end
 
 function RageModule:Start()
-    print("[RAGE DEBUG] Starting ragebot...")
-    
-    if connection then 
-        print("[RAGE DEBUG] Already running")
-        return 
-    end
+    if connection then return end
     
     connection = RunService.Heartbeat:Connect(function()
         if not RageModule.Settings.Enabled then
@@ -191,40 +191,28 @@ function RageModule:Start()
             return
         end
         
-        if shooting then 
-            return 
-        end
+        if shooting then return end
         
         local target = findTarget()
         currentTarget = target
         
-        if target then
-            print("[RAGE DEBUG] Target found, attempting shoot...")
-            if RageModule.Settings.AutoFire then
-                shoot(target)
-            else
-                print("[RAGE DEBUG] AutoFire disabled")
-            end
+        if target and RageModule.Settings.AutoFire then
+            shoot(target)
         end
     end)
-    
-    print("[RAGE DEBUG] ✓ Ragebot connection established!")
 end
 
 function RageModule:Stop()
-    print("[RAGE DEBUG] Stopping ragebot...")
     if connection then
         connection:Disconnect()
         connection = nil
     end
     currentTarget = nil
     shooting = false
-    print("[RAGE DEBUG] ✓ Ragebot stopped!")
 end
 
 function RageModule:GetCurrentTarget()
     return currentTarget
 end
 
-print("[RAGE DEBUG] ✓ Module ready!")
 return RageModule
