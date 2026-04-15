@@ -1,3 +1,4 @@
+-- NEVERLOSE RAGE MODULE v4.0 (Pure Arcanum Core + Enhancements)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
@@ -5,6 +6,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
 
 local RageModule = {}
+
+-- Настройки (совместимы с mainpanel.txt)
 RageModule.Settings = {
     Enabled = false,
     SilentAim = true,
@@ -24,7 +27,7 @@ RageModule.Settings = {
     DoubleTap = false,
     WallCheck = false,
     TargetMode = "Highest Damage",
-    Multipoint = true,
+    Multipoint = true, -- Оставлено для совместимости UI, но в коде отключено ради скорости
     MultipointScale = 0.5,
     Backtrack = "Maximum",
     DelayShot = false,
@@ -36,6 +39,7 @@ RageModule.Settings = {
     AdaptiveFireRate = true
 }
 
+-- Служебные переменные
 local lastShot = 0
 local currentTarget = nil
 local connection = nil
@@ -62,6 +66,9 @@ local DAMAGE_MULTIPLIERS = {
     RightUpperLeg = 0.6, RightLowerLeg = 0.6, RightFoot = 0.6,
     ["Left Leg"] = 0.6, ["Right Leg"] = 0.6
 }
+
+-- ==================== УТИЛИТЫ ====================
+
 local function CacheLocalPlayer()
     local c = LocalPlayer.Character
     if c then
@@ -105,16 +112,18 @@ local function CalculateDamage(partName, distance)
     return math.floor(damage)
 end
 
+-- Мгновенный брейк АА (СИНХРОННЫЙ)
 local function BreakAntiAim(state)
     if not RageModule.Settings.AntiAimBreaker then return end
     if aahelp then pcall(function() aahelp:FireServer(state) end) end
     if aahelp1 then pcall(function() aahelp1:FireServer(state) end) end
 end
 
+-- ==================== КАШИРОВАНИЕ (КАК В ARCANUM) ====================
 
 local function UpdatePlayerCache()
     local now = tick()
-    if now - cacheUpdateTime < 0.4 then return end 
+    if now - cacheUpdateTime < 0.4 then return end
     cacheUpdateTime = now
     
     table.clear(playerCache)
@@ -147,19 +156,19 @@ local function UpdatePlayerCache()
     table.sort(playerCache, function(a, b) return a.dist < b.dist end)
 end
 
--- ==================== ГЛАВНЫЙ ЦИКЛ ====================
+-- ==================== ГЛАВНЫЙ ЦИКЛ (ЧИСТЫЙ ARCANUM) ====================
 
 function RageModule:Start()
     if connection then return end
-    print("[Rage] Starting Arcanum-Sync Ragebot...")
     
-    connection = RunService.Heartbeat:Connect(function(dt)
+    connection = RunService.Heartbeat:Connect(function()
         if not RageModule.Settings.Enabled then return end
         
         frame = frame + 1
-        if frame % 15 == 0 then CacheLocalPlayer() end -- Редкое обновление персонажа экономит FPS
+        if frame % 15 == 0 then CacheLocalPlayer() end
         if not myChar or not myHRP or not myHead then return end
         
+        -- СТРОГАЯ ПРИВЯЗКА К КАДРАМ (Секрет скорости Arcanum)
         if frame % 3 ~= 0 then return end
         
         local now = tick()
@@ -173,11 +182,13 @@ function RageModule:Start()
         local best = nil
         local bestTgt = nil
         local bestPos = nil
+
+        -- Ищем цель среди 4 ближайших (быстрый break)
         for i = 1, math.min(4, #playerCache) do
             local d = playerCache[i]
             if not d then continue end
 
-            -- Выбор хитбокса
+            -- Выбор хитбокса (Head > Torso > Root)
             local tgt = nil
             if RageModule.Settings.Hitboxes.Head and d.head then
                 tgt = d.head
@@ -189,17 +200,24 @@ function RageModule:Start()
 
             if not tgt then continue end
 
-            -- Проверка MinDamage (мгновенная)
+            -- Проверка урона
             if RageModule.Settings.MinDamage > 0 then
                 if CalculateDamage(tgt.Name, d.dist) < RageModule.Settings.MinDamage then continue end
             end
 
+            -- HIT CHANCE (Симуляция без задержек)
+            if RageModule.Settings.HitChance < 100 and math.random(1, 100) > RageModule.Settings.HitChance then
+                continue
+            end
+
+            -- ПРЕДИКЦИЯ 1 В 1 ИЗ ARCANUM
+            -- Секрет: игнорируем ось Y (высоту). Предсказываем только бег по земле.
             local vel = d.r.AssemblyLinearVelocity
             local pos = tgt.Position
             
             if vel.Magnitude > 1 then
                 local ping = LocalPlayer:GetNetworkPing()
-                -- Множитель подстраивается под ползунок в панели
+                -- Конвертируем ползунок 0.165 в множитель 1.0 (как в аркануме)
                 local predMulti = RageModule.Settings.PredictionStrength / 0.165 
                 pos = pos + Vector3.new(vel.X, 0, vel.Z) * ping * predMulti
             end
@@ -210,12 +228,14 @@ function RageModule:Start()
 
             local canShoot = false
             
+            -- ЛОГИКА СТРЕЛЬБЫ
             if RageModule.Settings.WallCheck then
+                -- Строгий режим: стреляем только если луч попал прямо в модель врага
                 if res and res.Instance:IsDescendantOf(d.c) then
                     canShoot = true
                 end
             else
-                -- Если WallCheck выключен - стреляем в любую видимую цель
+                -- Режим Arcanum: стреляем если луч не встретил стену, ИЛИ встретил часть врага
                 if not res or res.Instance:IsDescendantOf(d.c) then
                     canShoot = true
                 end
@@ -225,43 +245,40 @@ function RageModule:Start()
                 best = d
                 bestTgt = tgt
                 bestPos = pos
-                break -- Нашли ближайшего видимого, берем его и выходим (быстрее всего)
+                break -- Нашли цель - сразу стреляем, не ищем дальше (экономия FPS)
             end
         end
 
+        -- ==================== ЭКЗЕКУШН ====================
         if best and bestPos then
-            -- 1. FakeDuck обработка (синхронная)
-            if _G.FakeDuckActive then
-                _G.FakeDuckPause = true
-            end
+            
+            -- 1. FakeDuck пауза
+            if _G.FakeDuckActive then _G.FakeDuckPause = true end
 
-            -- 2. AutoStop (МГНОВЕННЫЙ, без task.wait)
+            -- 2. AutoStop (Мгновенная остановка без task.wait)
             if RageModule.Settings.AutoStop and myHRP and myHum then
                 if myHum.FloorMaterial ~= Enum.Material.Air then
                     myHRP.AssemblyLinearVelocity = Vector3.new(0, myHRP.AssemblyLinearVelocity.Y, 0)
                 end
             end
 
-            -- 3. Выключаем АА
+            -- 3. Выключаем Анти-Аим
             BreakAntiAim("disable")
 
-            -- 4. ВЫСТРЕЛ
+            -- 4. ВЫСТРЕЛ (Идеальное попадание)
             pcall(fs.FireServer, fs, myHead.Position, (bestPos - myHead.Position).Unit, bestTgt)
             
             lastShot = now
             currentTarget = best
             currentTarget.targetPart = bestTgt
 
-            -- 5. Сразу возвращаем АА в этом же кадре
+            -- 5. Включаем Анти-Аим обратно в том же кадре
             BreakAntiAim("enable")
             
-            -- 6. Возвращаем FakeDuck
-            if _G.FakeDuckActive then
-                _G.FakeDuckPause = false
-            end
+            -- 6. Снимаем паузу FakeDuck
+            if _G.FakeDuckActive then _G.FakeDuckPause = false end
         end
         
-        -- Сброс кадров
         if frame > 1000 then frame = 0 end
     end)
 end
@@ -273,7 +290,6 @@ function RageModule:Stop()
     end
     currentTarget = nil
     BreakAntiAim("enable")
-    print("[Rage] Ragebot stopped")
 end
 
 function RageModule:GetCurrentTarget()
