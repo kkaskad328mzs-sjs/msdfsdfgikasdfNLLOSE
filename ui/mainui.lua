@@ -78,7 +78,7 @@ function lib:create(title)
     centerText.BackgroundTransparency=1
     centerText.Font=Enum.Font.GothamBold
     centerText.TextSize=48
-    centerText.TextTransparency=0.95
+    centerText.TextTransparency=0.92
     centerText.ZIndex=0
     centerText.Parent=r.gui
     
