@@ -19,7 +19,7 @@ function RageModule.new(player)
 	self.MAX_DISTANCE = 1000
 	
 	self.PREDICTION_ENABLED = true
-	self.PREDICTION_STRENGTH = 0.15
+	self.PREDICTION_STRENGTH = 5
 	
 	self.MIN_DAMAGE_ENABLED = false
 	self.MIN_DAMAGE_VALUE = 0
@@ -251,11 +251,14 @@ function RageModule:PredictPosition(part, rootPart)
 	
 	local velocity = rootPart.AssemblyLinearVelocity or Vector3.new()
 	
-	if velocity.Magnitude < 3 then
+	if velocity.Magnitude < 1 then
 		return part.Position
 	end
 	
-	return part.Position + velocity * self.PREDICTION_STRENGTH
+	local horizontalVelocity = Vector3.new(velocity.X, 0, velocity.Z)
+	local ping = self.player:GetNetworkPing()
+	
+	return part.Position + horizontalVelocity * ping * self.PREDICTION_STRENGTH
 end
 
 function RageModule:CalculatePotentialDamage(partName, distance)
@@ -461,9 +464,7 @@ function RageModule:Start()
 		local origin = head.Position
 		local direction = (targetPos - origin).Unit
 		
-		local success = pcall(function()
-			fireShot:FireServer(origin, direction, target.targetPart)
-		end)
+		local success = pcall(fireShot.FireServer, fireShot, origin, direction, target.targetPart)
 		
 		if success then
 			self.lastShot = currentTime
