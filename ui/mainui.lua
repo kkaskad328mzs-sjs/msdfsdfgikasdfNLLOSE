@@ -309,6 +309,164 @@ function lib:create(title)
                 return g
             end
             
+            function g:dropdown(text,opts,def,cb)
+                local f=Instance.new("Frame")
+                f.Size=UDim2.new(1,0,0,40)
+                f.BackgroundTransparency=1
+                f.ClipsDescendants=false
+                f.ZIndex=10
+                f.Parent=cnt
+                
+                local lbl=Instance.new("TextLabel")
+                lbl.Text=text
+                lbl.Size=UDim2.new(1,0,0,15)
+                lbl.BackgroundTransparency=1
+                lbl.TextXAlignment=Enum.TextXAlignment.Left
+                lbl.TextColor3=t.dim
+                lbl.Font=t.font
+                lbl.TextSize=13
+                lbl.Parent=f
+                
+                local box=Instance.new("TextButton")
+                box.Size=UDim2.new(1,0,0,20)
+                box.Position=UDim2.new(0,0,0,18)
+                box.BackgroundColor3=t.dark
+                box.BorderColor3=t.stroke
+                box.Text=def.." ▼"
+                box.TextColor3=t.text
+                box.Font=t.font
+                box.TextSize=13
+                box.Parent=f
+                
+                local ol=Instance.new("Frame")
+                ol.Size=UDim2.new(1,0,0,#opts*20)
+                ol.Position=UDim2.new(0,0,0,38)
+                ol.BackgroundColor3=t.darker
+                ol.BorderColor3=t.stroke
+                ol.Visible=false
+                ol.ZIndex=100
+                ol.Parent=f
+                local oll=Instance.new("UIListLayout")
+                oll.Parent=ol
+                
+                local cur=def
+                local open=false
+                
+                for _,opt in ipairs(opts) do
+                    local ob=Instance.new("TextButton")
+                    ob.Size=UDim2.new(1,0,0,20)
+                    ob.BackgroundColor3=t.dark
+                    ob.BorderSizePixel=0
+                    ob.Text=opt
+                    ob.TextColor3=opt==cur and t.accent or t.dim
+                    ob.Font=t.font
+                    ob.TextSize=12
+                    ob.ZIndex=101
+                    ob.Parent=ol
+                    
+                    ob.MouseButton1Click:Connect(function()
+                        cur=opt
+                        box.Text=opt.." ▼"
+                        ol.Visible=false
+                        open=false
+                        f.Size=UDim2.new(1,0,0,40)
+                        for _,b in ipairs(ol:GetChildren()) do
+                            if b:IsA("TextButton") then
+                                b.TextColor3=b.Text==cur and t.accent or t.dim
+                            end
+                        end
+                        if cb then cb(cur) end
+                    end)
+                end
+                
+                box.MouseButton1Click:Connect(function()
+                    open=not open
+                    ol.Visible=open
+                    f.Size=open and UDim2.new(1,0,0,40+#opts*20) or UDim2.new(1,0,0,40)
+                end)
+                return g
+            end
+            
+            function g:keybind(text,def,cb)
+                local f=Instance.new("Frame")
+                f.Size=UDim2.new(1,0,0,20)
+                f.BackgroundTransparency=1
+                f.Parent=cnt
+                
+                local lbl=Instance.new("TextLabel")
+                lbl.Text=text
+                lbl.Size=UDim2.new(0.6,0,1,0)
+                lbl.BackgroundTransparency=1
+                lbl.TextXAlignment=Enum.TextXAlignment.Left
+                lbl.TextColor3=t.dim
+                lbl.Font=t.font
+                lbl.TextSize=13
+                lbl.Parent=f
+                
+                local b=Instance.new("TextButton")
+                b.Size=UDim2.new(0.3,0,1,0)
+                b.Position=UDim2.new(0.7,0,0,0)
+                b.BackgroundColor3=Color3.fromRGB(22,22,22)
+                b.BorderColor3=t.stroke
+                b.Text="["..def.Name.."]"
+                b.TextColor3=t.dim
+                b.Font=t.font
+                b.TextSize=11
+                b.Parent=f
+                
+                local waiting=false
+                b.MouseButton1Click:Connect(function()
+                    waiting=true
+                    b.Text="[...]"
+                    b.TextColor3=t.accent
+                end)
+                
+                table.insert(r.conns,uis.InputBegan:Connect(function(i)
+                    if waiting and i.UserInputType==Enum.UserInputType.Keyboard then
+                        waiting=false
+                        b.Text="["..i.KeyCode.Name.."]"
+                        b.TextColor3=t.dim
+                        if cb then cb(i.KeyCode) end
+                    end
+                end))
+                return g
+            end
+            
+            function g:textbox(text,def,cb)
+                local f=Instance.new("Frame")
+                f.Size=UDim2.new(1,0,0,40)
+                f.BackgroundTransparency=1
+                f.Parent=cnt
+                
+                local lbl=Instance.new("TextLabel")
+                lbl.Text=text
+                lbl.Size=UDim2.new(1,0,0,15)
+                lbl.BackgroundTransparency=1
+                lbl.TextXAlignment=Enum.TextXAlignment.Left
+                lbl.TextColor3=t.dim
+                lbl.Font=t.font
+                lbl.TextSize=13
+                lbl.Parent=f
+                
+                local tb=Instance.new("TextBox")
+                tb.Size=UDim2.new(1,0,0,20)
+                tb.Position=UDim2.new(0,0,0,18)
+                tb.BackgroundColor3=t.dark
+                tb.BorderColor3=t.stroke
+                tb.Text=def or ""
+                tb.PlaceholderText="Enter..."
+                tb.TextColor3=t.text
+                tb.Font=t.font
+                tb.TextSize=12
+                tb.ClearTextOnFocus=false
+                tb.Parent=f
+                
+                tb.FocusLost:Connect(function()
+                    if cb then cb(tb.Text) end
+                end)
+                return g
+            end
+            
             return g
         end
         return tl
@@ -325,5 +483,226 @@ function lib:cleanup()
     r.gui=nil
     r.main=nil
 end
+
+function lib:createhotkeys(parent)
+    local f=Instance.new("Frame")
+    f.Name="HK"
+    f.Size=UDim2.new(0,160,0,24)
+    f.Position=UDim2.new(1,-170,0,200)
+    f.BackgroundColor3=t.main
+    f.BackgroundTransparency=0.1
+    f.BorderSizePixel=0
+    f.Active=true
+    f.Parent=parent
+    
+    local s=Instance.new("UIStroke")
+    s.Color=t.stroke
+    s.Parent=f
+    
+    local gl=Instance.new("Frame")
+    gl.Size=UDim2.new(1,0,0,2)
+    gl.BorderSizePixel=0
+    gl.Parent=f
+    
+    local ug=Instance.new("UIGradient")
+    ug.Color=ColorSequence.new({
+        ColorSequenceKeypoint.new(0,t.accent),
+        ColorSequenceKeypoint.new(1,Color3.fromRGB(100,200,50))
+    })
+    ug.Parent=gl
+    
+    local title=Instance.new("TextLabel")
+    title.Text="hotkeys"
+    title.Size=UDim2.new(1,0,0,20)
+    title.Position=UDim2.new(0,0,0,3)
+    title.BackgroundTransparency=1
+    title.Font=t.font
+    title.TextSize=11
+    title.TextColor3=t.dim
+    title.Parent=f
+    
+    local cont=Instance.new("Frame")
+    cont.Name="C"
+    cont.Size=UDim2.new(1,-8,1,-24)
+    cont.Position=UDim2.new(0,4,0,22)
+    cont.BackgroundTransparency=1
+    cont.Parent=f
+    
+    local list=Instance.new("UIListLayout")
+    list.Padding=UDim.new(0,2)
+    list.Parent=cont
+    
+    list:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        f.Size=UDim2.new(0,160,0,math.max(24,list.AbsoluteContentSize.Y+26))
+    end)
+    
+    local drag,dstart,dpos=false,nil,nil
+    f.InputBegan:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 then
+            drag=true
+            dstart=i.Position
+            dpos=f.Position
+        end
+    end)
+    
+    f.InputChanged:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseMovement and drag then
+            local d=i.Position-dstart
+            f.Position=UDim2.new(dpos.X.Scale,dpos.X.Offset+d.X,dpos.Y.Scale,dpos.Y.Offset+d.Y)
+        end
+    end)
+    
+    table.insert(r.conns,uis.InputEnded:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 then
+            drag=false
+        end
+    end))
+    
+    return f
+end
+
+function lib:createwatermark(parent)
+    local f=Instance.new("Frame")
+    f.Size=UDim2.new(0,200,0,22)
+    f.Position=UDim2.new(0,10,0,10)
+    f.BackgroundColor3=t.main
+    f.BackgroundTransparency=0.1
+    f.BorderSizePixel=0
+    f.Parent=parent
+    
+    local s=Instance.new("UIStroke")
+    s.Color=t.stroke
+    s.Parent=f
+    
+    local gl=Instance.new("Frame")
+    gl.Size=UDim2.new(1,0,0,2)
+    gl.BorderSizePixel=0
+    gl.Parent=f
+    
+    local ug=Instance.new("UIGradient")
+    ug.Color=ColorSequence.new({
+        ColorSequenceKeypoint.new(0,t.accent),
+        ColorSequenceKeypoint.new(1,Color3.fromRGB(100,200,50))
+    })
+    ug.Parent=gl
+    
+    local txt=Instance.new("TextLabel")
+    txt.Name="T"
+    txt.Size=UDim2.new(1,-10,1,-2)
+    txt.Position=UDim2.new(0,5,0,2)
+    txt.BackgroundTransparency=1
+    txt.Font=t.font
+    txt.TextSize=11
+    txt.TextColor3=t.text
+    txt.TextXAlignment=Enum.TextXAlignment.Left
+    txt.Text="Arcanum.lua | loading..."
+    txt.Parent=f
+    
+    return f,txt
+end
+
+function lib:createtimedisplay(parent)
+    local f=Instance.new("Frame")
+    f.Size=UDim2.new(0,80,0,22)
+    f.Position=UDim2.new(1,-90,0,10)
+    f.BackgroundColor3=t.main
+    f.BackgroundTransparency=0.1
+    f.BorderSizePixel=0
+    f.Active=true
+    f.Parent=parent
+    
+    local s=Instance.new("UIStroke")
+    s.Color=t.stroke
+    s.Parent=f
+    
+    local gl=Instance.new("Frame")
+    gl.Size=UDim2.new(1,0,0,2)
+    gl.BorderSizePixel=0
+    gl.Parent=f
+    
+    local ug=Instance.new("UIGradient")
+    ug.Color=ColorSequence.new({
+        ColorSequenceKeypoint.new(0,t.accent),
+        ColorSequenceKeypoint.new(1,Color3.fromRGB(100,200,50))
+    })
+    ug.Parent=gl
+    
+    local txt=Instance.new("TextLabel")
+    txt.Name="T"
+    txt.Size=UDim2.new(1,-10,1,-2)
+    txt.Position=UDim2.new(0,5,0,2)
+    txt.BackgroundTransparency=1
+    txt.Font=t.font
+    txt.TextSize=11
+    txt.TextColor3=t.text
+    txt.TextXAlignment=Enum.TextXAlignment.Center
+    txt.Text="--:--:--"
+    txt.Parent=f
+    
+    local drag,dstart,dpos=false,nil,nil
+    f.InputBegan:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 then
+            drag=true
+            dstart=i.Position
+            dpos=f.Position
+        end
+    end)
+    
+    f.InputChanged:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseMovement and drag then
+            local d=i.Position-dstart
+            f.Position=UDim2.new(dpos.X.Scale,dpos.X.Offset+d.X,dpos.Y.Scale,dpos.Y.Offset+d.Y)
+        end
+    end)
+    
+    table.insert(r.conns,uis.InputEnded:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 then
+            drag=false
+        end
+    end))
+    
+    return f,txt
+end
+
+function lib:updatehotkeys(hkframe,hotkeys)
+    if not hkframe then return end
+    local cont=hkframe:FindFirstChild("C")
+    if not cont then return end
+    
+    for _,c in ipairs(cont:GetChildren()) do
+        if c:IsA("Frame") then c:Destroy() end
+    end
+    
+    for name,data in pairs(hotkeys) do
+        if data.active then
+            local e=Instance.new("Frame")
+            e.Size=UDim2.new(1,0,0,16)
+            e.BackgroundTransparency=1
+            e.Parent=cont
+            
+            local nl=Instance.new("TextLabel")
+            nl.Text=name
+            nl.Size=UDim2.new(0.65,0,1,0)
+            nl.BackgroundTransparency=1
+            nl.TextXAlignment=Enum.TextXAlignment.Left
+            nl.Font=t.font
+            nl.TextSize=11
+            nl.TextColor3=t.text
+            nl.Parent=e
+            
+            local kl=Instance.new("TextLabel")
+            kl.Text="["..data.key.."]"
+            kl.Size=UDim2.new(0.35,0,1,0)
+            kl.Position=UDim2.new(0.65,0,0,0)
+            kl.BackgroundTransparency=1
+            kl.TextXAlignment=Enum.TextXAlignment.Right
+            kl.Font=t.font
+            kl.TextSize=10
+            kl.TextColor3=t.dim
+            kl.Parent=e
+        end
+    end
+end
+
 
 return lib
