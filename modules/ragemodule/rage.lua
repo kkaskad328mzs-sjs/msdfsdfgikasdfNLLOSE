@@ -12,28 +12,11 @@ RageModule.Settings = {
     AutoFire = true,
     AimThroughWalls = true,
     FOV = 360,
-    Hitboxes = {Head = true, Body = true, Arms = false, Legs = false},
-    HitChance = 100,
-    MinDamage = 0,
+    Hitboxes = {Head = true, Body = false},
     Prediction = true,
-    PredictionStrength = 0.165,
-    VelocityResolver = true,
-    PingCompensation = true,
-    AutoStop = true,
-    AutoStopModes = {Early = true, InAir = false, BetweenShot = true, ForceAccurate = true},
-    DoubleTap = false,
+    PredictionStrength = 1.0,
     WallCheck = false,
-    TargetMode = "Highest Damage",
-    Multipoint = true,
-    MultipointScale = 0.5,
-    Backtrack = "Maximum",
-    DelayShot = false,
-    Resolver = true,
-    ResolverMode = "Smart",
-    AntiAimBreaker = true,
-    AdvancedPrediction = true,
-    SmartHitbox = true,
-    AdaptiveFireRate = true
+    TargetMode = "Closest"
 }
 
 local lastShot = 0
