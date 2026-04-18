@@ -1,60 +1,42 @@
 local lib = {}
-local uis = game:GetService("UserInputService")
-
+lib.runtime = {gui=nil,main=nil,drag=false,dragStart=nil,startPos=nil,conns={},sliderDrag=nil}
 lib.theme = {
-    main = Color3.fromRGB(12,12,12),
-    group = Color3.fromRGB(19,19,19),
-    stroke = Color3.fromRGB(45,45,45),
-    accent = Color3.fromRGB(168,247,50),
-    text = Color3.fromRGB(220,220,220),
-    dim = Color3.fromRGB(140,140,140),
-    font = Enum.Font.Code,
-    dark = Color3.fromRGB(25,25,25),
-    darker = Color3.fromRGB(20,20,20),
-    border = Color3.fromRGB(60,60,60)
+    main=Color3.fromRGB(12,12,12),group=Color3.fromRGB(19,19,19),stroke=Color3.fromRGB(45,45,45),
+    accent=Color3.fromRGB(168,247,50),text=Color3.fromRGB(220,220,220),dim=Color3.fromRGB(140,140,140),
+    font=Enum.Font.Code,dark=Color3.fromRGB(25,25,25),darker=Color3.fromRGB(20,20,20),border=Color3.fromRGB(60,60,60)
 }
-
-lib.runtime = {
-    gui = nil,
-    main = nil,
-    drag = false,
-    dragStart = nil,
-    startPos = nil,
-    conns = {},
-    sliderDrag = nil
-}
-
-local t = lib.theme
-local r = lib.runtime
+local t=lib.theme
+local r=lib.runtime
+local uis=game:GetService("UserInputService")
 
 function lib:create(title)
     if r.gui then r.gui:Destroy() end
-    r.gui = Instance.new("ScreenGui")
-    r.gui.Name = "Arc"
-    r.gui.ResetOnSpawn = false
-    r.gui.Parent = game:GetService("CoreGui")
-
-    local w = Instance.new("Frame")
-    w.Name = "M"
-    w.Size = UDim2.new(0,620,0,450)
-    w.Position = UDim2.new(0.5,-310,0.5,-225)
-    w.BackgroundColor3 = t.main
-    w.BorderSizePixel = 0
-    w.Parent = r.gui
-    r.main = w
-
-    local s = Instance.new("UIStroke")
-    s.Color = t.border
-    s.Parent = w
-
-    local gl = Instance.new("Frame")
-    gl.Size = UDim2.new(1,0,0,2)
-    gl.Position = UDim2.new(0,0,0,0)
-    gl.BorderSizePixel = 0
-    gl.Parent = w
-
-    local ug = Instance.new("UIGradient")
-    ug.Color = ColorSequence.new({
+    r.gui=Instance.new("ScreenGui")
+    r.gui.Name="Arc"
+    r.gui.ResetOnSpawn=false
+    r.gui.Parent=game:GetService("CoreGui")
+    
+    local w=Instance.new("Frame")
+    w.Name="M"
+    w.Size=UDim2.new(0,620,0,450)
+    w.Position=UDim2.new(0.5,-310,0.5,-225)
+    w.BackgroundColor3=t.main
+    w.BorderSizePixel=0
+    w.Parent=r.gui
+    r.main=w
+    
+    local s=Instance.new("UIStroke")
+    s.Color=t.border
+    s.Parent=w
+    
+    local gl=Instance.new("Frame")
+    gl.Size=UDim2.new(1,0,0,2)
+    gl.Position=UDim2.new(0,0,0,0)
+    gl.BorderSizePixel=0
+    gl.Parent=w
+    
+    local ug=Instance.new("UIGradient")
+    ug.Color=ColorSequence.new({
         ColorSequenceKeypoint.new(0,Color3.fromRGB(255,0,0)),
         ColorSequenceKeypoint.new(0.2,Color3.fromRGB(255,255,0)),
         ColorSequenceKeypoint.new(0.4,Color3.fromRGB(0,255,0)),
@@ -62,480 +44,271 @@ function lib:create(title)
         ColorSequenceKeypoint.new(0.8,Color3.fromRGB(0,0,255)),
         ColorSequenceKeypoint.new(1,Color3.fromRGB(255,0,255))
     })
-    ug.Parent = gl
-
-    local tl = Instance.new("TextLabel")
-    tl.Text = title
-    tl.Size = UDim2.new(1,0,0,20)
-    tl.Position = UDim2.new(0,0,0,4)
-    tl.BackgroundTransparency = 1
-    tl.Font = t.font
-    tl.TextSize = 13
-    tl.TextColor3 = t.text
-    tl.Parent = w
-
-    local tc = Instance.new("Frame")
-    tc.Size = UDim2.new(1,-20,0,40)
-    tc.Position = UDim2.new(0,10,0,30)
-    tc.BackgroundColor3 = t.group
-    tc.BorderColor3 = t.stroke
-    tc.Parent = w
-
-    local tlay = Instance.new("UIListLayout")
-    tlay.FillDirection = Enum.FillDirection.Horizontal
-    tlay.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    tlay.VerticalAlignment = Enum.VerticalAlignment.Center
-    tlay.Padding = UDim.new(0,15)
-    tlay.Parent = tc
-
-    local pc = Instance.new("Frame")
-    pc.Size = UDim2.new(1,-20,1,-85)
-    pc.Position = UDim2.new(0,10,0,75)
-    pc.BackgroundTransparency = 1
-    pc.Parent = w
-
+    ug.Parent=gl
+    
+    local tl=Instance.new("TextLabel")
+    tl.Text=title
+    tl.Size=UDim2.new(1,0,0,20)
+    tl.Position=UDim2.new(0,0,0,4)
+    tl.BackgroundTransparency=1
+    tl.Font=t.font
+    tl.TextSize=13
+    tl.TextColor3=t.text
+    tl.Parent=w
+    
+    local tc=Instance.new("Frame")
+    tc.Size=UDim2.new(1,-20,0,40)
+    tc.Position=UDim2.new(0,10,0,30)
+    tc.BackgroundColor3=t.group
+    tc.BorderColor3=t.stroke
+    tc.Parent=w
+    
+    local tlay=Instance.new("UIListLayout")
+    tlay.FillDirection=Enum.FillDirection.Horizontal
+    tlay.HorizontalAlignment=Enum.HorizontalAlignment.Center
+    tlay.VerticalAlignment=Enum.VerticalAlignment.Center
+    tlay.Padding=UDim.new(0,15)
+    tlay.Parent=tc
+    
+    local pc=Instance.new("Frame")
+    pc.Size=UDim2.new(1,-20,1,-85)
+    pc.Position=UDim2.new(0,10,0,75)
+    pc.BackgroundTransparency=1
+    pc.Parent=w
+    
     w.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 and i.Position.Y < w.AbsolutePosition.Y + 30 then
-            r.drag = true
-            r.dragStart = i.Position
-            r.startPos = w.Position
+        if i.UserInputType==Enum.UserInputType.MouseButton1 and i.Position.Y<w.AbsolutePosition.Y+30 then
+            r.drag=true
+            r.dragStart=i.Position
+            r.startPos=w.Position
         end
     end)
-
+    
     w.InputChanged:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseMovement and r.drag then
-            local d = i.Position - r.dragStart
-            w.Position = UDim2.new(r.startPos.X.Scale,r.startPos.X.Offset + d.X,r.startPos.Y.Scale,r.startPos.Y.Offset + d.Y)
+        if i.UserInputType==Enum.UserInputType.MouseMovement and r.drag then
+            local d=i.Position-r.dragStart
+            w.Position=UDim2.new(r.startPos.X.Scale,r.startPos.X.Offset+d.X,r.startPos.Y.Scale,r.startPos.Y.Offset+d.Y)
         end
     end)
-
+    
     table.insert(r.conns,uis.InputChanged:Connect(function(i)
-        if r.sliderDrag and i.UserInputType == Enum.UserInputType.MouseMovement then
-            local d = r.sliderDrag
-            local rel = math.clamp((i.Position.X - d.bg.AbsolutePosition.X) / d.bg.AbsoluteSize.X,0,1)
-            d.val = math.floor(d.min + (d.max - d.min) * rel)
-            d.fill.Size = UDim2.new(rel,0,1,0)
-            d.lbl.Text = d.text..": "..d.val
+        if r.sliderDrag and i.UserInputType==Enum.UserInputType.MouseMovement then
+            local d=r.sliderDrag
+            local rel=math.clamp((i.Position.X-d.bg.AbsolutePosition.X)/d.bg.AbsoluteSize.X,0,1)
+            d.val=math.floor(d.min+(d.max-d.min)*rel)
+            d.fill.Size=UDim2.new(rel,0,1,0)
+            d.lbl.Text=d.text..": "..d.val
             if d.cb then d.cb(d.val) end
         end
     end))
-
+    
     table.insert(r.conns,uis.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 then
-            r.drag = false
-            r.sliderDrag = nil
+        if i.UserInputType==Enum.UserInputType.MouseButton1 then
+            r.drag=false
+            r.sliderDrag=nil
         end
     end))
-
-    local tabs = {}
+    
+    local tabs={}
     function tabs:newtab(name)
-        local btn = Instance.new("TextButton")
-        btn.Text = name
-        btn.Size = UDim2.new(0,70,1,0)
-        btn.BackgroundTransparency = 1
-        btn.Font = t.font
-        btn.TextSize = 13
-        btn.TextColor3 = t.dim
-        btn.Parent = tc
-
-        local page = Instance.new("ScrollingFrame")
-        page.Size = UDim2.new(1,0,1,0)
-        page.BackgroundTransparency = 1
-        page.Visible = false
-        page.BorderSizePixel = 0
-        page.ScrollBarThickness = 4
-        page.ScrollBarImageColor3 = t.accent
-        page.ScrollingDirection = Enum.ScrollingDirection.Y
-        page.CanvasSize = UDim2.new(0,0,0,0)
-        page.AutomaticCanvasSize = Enum.AutomaticSize.Y
-        page.Parent = pc
-
-        local lc = Instance.new("Frame")
-        lc.Size = UDim2.new(0.48,0,0,0)
-        lc.BackgroundTransparency = 1
-        lc.AutomaticSize = Enum.AutomaticSize.Y
-        lc.Parent = page
-        local ll = Instance.new("UIListLayout")
-        ll.Padding = UDim.new(0,12)
-        ll.Parent = lc
-
-        local rc = Instance.new("Frame")
-        rc.Size = UDim2.new(0.48,0,0,0)
-        rc.Position = UDim2.new(0.52,0,0,0)
-        rc.BackgroundTransparency = 1
-        rc.AutomaticSize = Enum.AutomaticSize.Y
-        rc.Parent = page
-        local rl = Instance.new("UIListLayout")
-        rl.Padding = UDim.new(0,12)
-        rl.Parent = rc
-
+        local btn=Instance.new("TextButton")
+        btn.Text=name
+        btn.Size=UDim2.new(0,70,1,0)
+        btn.BackgroundTransparency=1
+        btn.Font=t.font
+        btn.TextSize=13
+        btn.TextColor3=t.dim
+        btn.Parent=tc
+        
+        local page=Instance.new("ScrollingFrame")
+        page.Size=UDim2.new(1,0,1,0)
+        page.BackgroundTransparency=1
+        page.Visible=false
+        page.BorderSizePixel=0
+        page.ScrollBarThickness=4
+        page.ScrollBarImageColor3=t.accent
+        page.ScrollingDirection=Enum.ScrollingDirection.Y
+        page.CanvasSize=UDim2.new(0,0,0,0)
+        page.AutomaticCanvasSize=Enum.AutomaticSize.Y
+        page.Parent=pc
+        
+        local lc=Instance.new("Frame")
+        lc.Size=UDim2.new(0.48,0,0,0)
+        lc.BackgroundTransparency=1
+        lc.AutomaticSize=Enum.AutomaticSize.Y
+        lc.Parent=page
+        local ll=Instance.new("UIListLayout")
+        ll.Padding=UDim.new(0,12)
+        ll.Parent=lc
+        
+        local rc=Instance.new("Frame")
+        rc.Size=UDim2.new(0.48,0,0,0)
+        rc.Position=UDim2.new(0.52,0,0,0)
+        rc.BackgroundTransparency=1
+        rc.AutomaticSize=Enum.AutomaticSize.Y
+        rc.Parent=page
+        local rl=Instance.new("UIListLayout")
+        rl.Padding=UDim.new(0,12)
+        rl.Parent=rc
+        
         btn.MouseButton1Click:Connect(function()
-            for _,p in ipairs(pc:GetChildren()) do p.Visible = false end
+            for _,p in ipairs(pc:GetChildren()) do p.Visible=false end
             for _,tb in ipairs(tc:GetChildren()) do
-                if tb:IsA("TextButton") then tb.TextColor3 = t.dim end
+                if tb:IsA("TextButton") then tb.TextColor3=t.dim end
             end
-            page.Visible = true
-            btn.TextColor3 = t.accent
+            page.Visible=true
+            btn.TextColor3=t.accent
         end)
-
-        if #tc:GetChildren() == 2 then
-            page.Visible = true
-            btn.TextColor3 = t.accent
+        
+        if #tc:GetChildren()==2 then
+            page.Visible=true
+            btn.TextColor3=t.accent
         end
-
-        local tl = {}
+        
+        local tl={}
         function tl:newgroupbox(side,gtitle)
-            local col = side == "Right" and rc or lc
-            local grp = Instance.new("Frame")
-            grp.Size = UDim2.new(1,0,0,0)
-            grp.BackgroundTransparency = 1
-            grp.AutomaticSize = Enum.AutomaticSize.Y
-            grp.Parent = col
-
-            local brd = Instance.new("Frame")
-            brd.Size = UDim2.new(1,0,0,0)
-            brd.Position = UDim2.new(0,0,0,8)
-            brd.BackgroundColor3 = t.main
-            brd.BorderColor3 = t.stroke
-            brd.AutomaticSize = Enum.AutomaticSize.Y
-            brd.Parent = grp
-
-            local ttl = Instance.new("TextLabel")
-            ttl.Text = gtitle
-            ttl.Position = UDim2.new(0,12,0,14)
-            ttl.AutomaticSize = Enum.AutomaticSize.X
-            ttl.BackgroundColor3 = t.main
-            ttl.BorderSizePixel = 0
-            ttl.TextColor3 = t.text
-            ttl.Font = t.font
-            ttl.TextSize = 12
-            ttl.ZIndex = 2
-            ttl.Parent = grp
-
-            local cnt = Instance.new("Frame")
-            cnt.Size = UDim2.new(1,-16,0,0)
-            cnt.Position = UDim2.new(0,8,0,22)
-            cnt.BackgroundTransparency = 1
-            cnt.AutomaticSize = Enum.AutomaticSize.Y
-            cnt.Parent = brd
-            local cl = Instance.new("UIListLayout")
-            cl.Padding = UDim.new(0,8)
-            cl.Parent = cnt
-            local pd = Instance.new("UIPadding")
-            pd.PaddingBottom = UDim.new(0,8)
-            pd.Parent = brd
-
-            local g = {}
+            local col=side=="Right" and rc or lc
+            local grp=Instance.new("Frame")
+            grp.Size=UDim2.new(1,0,0,0)
+            grp.BackgroundTransparency=1
+            grp.AutomaticSize=Enum.AutomaticSize.Y
+            grp.Parent=col
+            
+            local brd=Instance.new("Frame")
+            brd.Size=UDim2.new(1,0,0,0)
+            brd.Position=UDim2.new(0,0,0,8)
+            brd.BackgroundColor3=t.main
+            brd.BorderColor3=t.stroke
+            brd.AutomaticSize=Enum.AutomaticSize.Y
+            brd.Parent=grp
+            
+            local ttl=Instance.new("TextLabel")
+            ttl.Text=gtitle
+            ttl.Position=UDim2.new(0,12,0,14)
+            ttl.AutomaticSize=Enum.AutomaticSize.X
+            ttl.BackgroundColor3=t.main
+            ttl.BorderSizePixel=0
+            ttl.TextColor3=t.text
+            ttl.Font=t.font
+            ttl.TextSize=12
+            ttl.ZIndex=2
+            ttl.Parent=grp
+            
+            local cnt=Instance.new("Frame")
+            cnt.Size=UDim2.new(1,-16,0,0)
+            cnt.Position=UDim2.new(0,8,0,22)
+            cnt.BackgroundTransparency=1
+            cnt.AutomaticSize=Enum.AutomaticSize.Y
+            cnt.Parent=brd
+            local cl=Instance.new("UIListLayout")
+            cl.Padding=UDim.new(0,8)
+            cl.Parent=cnt
+            local pd=Instance.new("UIPadding")
+            pd.PaddingBottom=UDim.new(0,8)
+            pd.Parent=brd
+            
+            local g={}
             function g:toggle(text,def,cb)
-                local f = Instance.new("Frame")
-                f.Size = UDim2.new(1,0,0,20)
-                f.BackgroundTransparency = 1
-                f.Parent = cnt
-
-                local box = Instance.new("Frame")
-                box.Size = UDim2.new(0,16,0,16)
-                box.Position = UDim2.new(0,0,0,2)
-                box.BackgroundColor3 = t.dark
-                box.Parent = f
-                local bs = Instance.new("UIStroke")
-                bs.Color = t.stroke
-                bs.Parent = box
-
-                local lbl = Instance.new("TextLabel")
-                lbl.Text = text
-                lbl.Size = UDim2.new(1,-25,1,0)
-                lbl.Position = UDim2.new(0,25,0,0)
-                lbl.BackgroundTransparency = 1
-                lbl.TextXAlignment = Enum.TextXAlignment.Left
-                lbl.TextColor3 = t.dim
-                lbl.Font = t.font
-                lbl.TextSize = 13
-                lbl.Parent = f
-
-                local b = Instance.new("TextButton")
-                b.Size = UDim2.new(1,0,1,0)
-                b.BackgroundTransparency = 1
-                b.Text = ""
-                b.Parent = f
-
-                local en = def
+                local f=Instance.new("Frame")
+                f.Size=UDim2.new(1,0,0,20)
+                f.BackgroundTransparency=1
+                f.Parent=cnt
+                
+                local box=Instance.new("Frame")
+                box.Size=UDim2.new(0,16,0,16)
+                box.Position=UDim2.new(0,0,0,2)
+                box.BackgroundColor3=t.dark
+                box.Parent=f
+                local bs=Instance.new("UIStroke")
+                bs.Color=t.stroke
+                bs.Parent=box
+                
+                local lbl=Instance.new("TextLabel")
+                lbl.Text=text
+                lbl.Size=UDim2.new(1,-25,1,0)
+                lbl.Position=UDim2.new(0,25,0,0)
+                lbl.BackgroundTransparency=1
+                lbl.TextXAlignment=Enum.TextXAlignment.Left
+                lbl.TextColor3=t.dim
+                lbl.Font=t.font
+                lbl.TextSize=13
+                lbl.Parent=f
+                
+                local b=Instance.new("TextButton")
+                b.Size=UDim2.new(1,0,1,0)
+                b.BackgroundTransparency=1
+                b.Text=""
+                b.Parent=f
+                
+                local en=def
                 local function upd()
-                    box.BackgroundColor3 = en and t.accent or t.dark
-                    lbl.TextColor3 = en and t.text or t.dim
+                    box.BackgroundColor3=en and t.accent or t.dark
+                    lbl.TextColor3=en and t.text or t.dim
                     if cb then cb(en) end
                 end
-
+                
                 b.MouseButton1Click:Connect(function()
-                    en = not en
+                    en=not en
                     upd()
                 end)
                 upd()
                 return g
             end
-
+            
             function g:slider(text,min,max,def,cb)
-                local f = Instance.new("Frame")
-                f.Size = UDim2.new(1,0,0,35)
-                f.BackgroundTransparency = 1
-                f.Parent = cnt
-
-                local lbl = Instance.new("TextLabel")
-                lbl.Text = text..": "..def
-                lbl.Size = UDim2.new(1,0,0,15)
-                lbl.BackgroundTransparency = 1
-                lbl.TextXAlignment = Enum.TextXAlignment.Left
-                lbl.TextColor3 = t.dim
-                lbl.Font = t.font
-                lbl.TextSize = 13
-                lbl.Parent = f
-
-                local bg = Instance.new("Frame")
-                bg.Size = UDim2.new(1,0,0,12)
-                bg.Position = UDim2.new(0,0,0,18)
-                bg.BackgroundColor3 = t.dark
-                bg.BorderColor3 = t.stroke
-                bg.Parent = f
-
-                local fill = Instance.new("Frame")
-                fill.Size = UDim2.new((def-min)/(max-min),0,1,0)
-                fill.BackgroundColor3 = t.accent
-                fill.BorderSizePixel = 0
-                fill.Parent = bg
-
-                local data = {bg=bg,fill=fill,lbl=lbl,text=text,min=min,max=max,val=def,cb=cb}
+                local f=Instance.new("Frame")
+                f.Size=UDim2.new(1,0,0,35)
+                f.BackgroundTransparency=1
+                f.Parent=cnt
+                
+                local lbl=Instance.new("TextLabel")
+                lbl.Text=text..": "..def
+                lbl.Size=UDim2.new(1,0,0,15)
+                lbl.BackgroundTransparency=1
+                lbl.TextXAlignment=Enum.TextXAlignment.Left
+                lbl.TextColor3=t.dim
+                lbl.Font=t.font
+                lbl.TextSize=13
+                lbl.Parent=f
+                
+                local bg=Instance.new("Frame")
+                bg.Size=UDim2.new(1,0,0,12)
+                bg.Position=UDim2.new(0,0,0,18)
+                bg.BackgroundColor3=t.dark
+                bg.BorderColor3=t.stroke
+                bg.Parent=f
+                
+                local fill=Instance.new("Frame")
+                fill.Size=UDim2.new((def-min)/(max-min),0,1,0)
+                fill.BackgroundColor3=t.accent
+                fill.BorderSizePixel=0
+                fill.Parent=bg
+                
+                local data={bg=bg,fill=fill,lbl=lbl,text=text,min=min,max=max,val=def,cb=cb}
                 bg.InputBegan:Connect(function(i)
-                    if i.UserInputType == Enum.UserInputType.MouseButton1 then
-                        r.sliderDrag = data
+                    if i.UserInputType==Enum.UserInputType.MouseButton1 then
+                        r.sliderDrag=data
                     end
                 end)
                 return g
             end
-
-            function g:dropdown(text,opts,def,cb)
-                local f = Instance.new("Frame")
-                f.Size = UDim2.new(1,0,0,40)
-                f.BackgroundTransparency = 1
-                f.ClipsDescendants = false
-                f.ZIndex = 10
-                f.Parent = cnt
-
-                local lbl = Instance.new("TextLabel")
-                lbl.Text = text
-                lbl.Size = UDim2.new(1,0,0,15)
-                lbl.BackgroundTransparency = 1
-                lbl.TextXAlignment = Enum.TextXAlignment.Left
-                lbl.TextColor3 = t.dim
-                lbl.Font = t.font
-                lbl.TextSize = 13
-                lbl.Parent = f
-
-                local box = Instance.new("TextButton")
-                box.Size = UDim2.new(1,0,0,20)
-                box.Position = UDim2.new(0,0,0,18)
-                box.BackgroundColor3 = t.dark
-                box.BorderColor3 = t.stroke
-                box.Text = def.." ▼"
-                box.TextColor3 = t.text
-                box.Font = t.font
-                box.TextSize = 13
-                box.Parent = f
-
-                local ol = Instance.new("Frame")
-                ol.Size = UDim2.new(1,0,0,#opts * 20)
-                ol.Position = UDim2.new(0,0,0,38)
-                ol.BackgroundColor3 = t.darker
-                ol.BorderColor3 = t.stroke
-                ol.Visible = false
-                ol.ZIndex = 100
-                ol.Parent = f
-                local oll = Instance.new("UIListLayout")
-                oll.Parent = ol
-
-                local cur = def
-                local open = false
-
-                for _,opt in ipairs(opts) do
-                    local ob = Instance.new("TextButton")
-                    ob.Size = UDim2.new(1,0,0,20)
-                    ob.BackgroundColor3 = t.dark
-                    ob.BorderSizePixel = 0
-                    ob.Text = opt
-                    ob.TextColor3 = opt == cur and t.accent or t.dim
-                    ob.Font = t.font
-                    ob.TextSize = 12
-                    ob.ZIndex = 101
-                    ob.Parent = ol
-
-                    ob.MouseButton1Click:Connect(function()
-                        cur = opt
-                        box.Text = opt.." ▼"
-                        ol.Visible = false
-                        open = false
-                        f.Size = UDim2.new(1,0,0,40)
-                        for _,b in ipairs(ol:GetChildren()) do
-                            if b:IsA("TextButton") then
-                                b.TextColor3 = b.Text == cur and t.accent or t.dim
-                            end
-                        end
-                        if cb then cb(cur) end
-                    end)
-                end
-
-                box.MouseButton1Click:Connect(function()
-                    open = not open
-                    ol.Visible = open
-                    f.Size = open and UDim2.new(1,0,0,40 + #opts * 20) or UDim2.new(1,0,0,40)
-                end)
-                return g
-            end
-
+            
             function g:button(text,cb)
-                local b = Instance.new("TextButton")
-                b.Size = UDim2.new(1,0,0,22)
-                b.BackgroundColor3 = t.dark
-                b.BorderColor3 = t.stroke
-                b.Text = text
-                b.TextColor3 = t.text
-                b.Font = t.font
-                b.TextSize = 13
-                b.Parent = cnt
+                local b=Instance.new("TextButton")
+                b.Size=UDim2.new(1,0,0,22)
+                b.BackgroundColor3=t.dark
+                b.BorderColor3=t.stroke
+                b.Text=text
+                b.TextColor3=t.text
+                b.Font=t.font
+                b.TextSize=13
+                b.Parent=cnt
                 b.MouseButton1Click:Connect(function()
                     if cb then cb() end
                 end)
                 return g
             end
-
-            function g:keybind(text,def,cb)
-                local f = Instance.new("Frame")
-                f.Size = UDim2.new(1,0,0,20)
-                f.BackgroundTransparency = 1
-                f.Parent = cnt
-
-                local lbl = Instance.new("TextLabel")
-                lbl.Text = text
-                lbl.Size = UDim2.new(0.6,0,1,0)
-                lbl.BackgroundTransparency = 1
-                lbl.TextXAlignment = Enum.TextXAlignment.Left
-                lbl.TextColor3 = t.dim
-                lbl.Font = t.font
-                lbl.TextSize = 13
-                lbl.Parent = f
-
-                local b = Instance.new("TextButton")
-                b.Size = UDim2.new(0.3,0,1,0)
-                b.Position = UDim2.new(0.7,0,0,0)
-                b.BackgroundColor3 = Color3.fromRGB(22,22,22)
-                b.BorderColor3 = t.stroke
-                b.Text = "["..def.Name.."]"
-                b.TextColor3 = t.dim
-                b.Font = t.font
-                b.TextSize = 11
-                b.Parent = f
-
-                local waiting = false
-                b.MouseButton1Click:Connect(function()
-                    waiting = true
-                    b.Text = "[...]"
-                    b.TextColor3 = t.accent
-                end)
-
-                table.insert(r.conns,uis.InputBegan:Connect(function(i)
-                    if waiting and i.UserInputType == Enum.UserInputType.Keyboard then
-                        waiting = false
-                        b.Text = "["..i.KeyCode.Name.."]"
-                        b.TextColor3 = t.dim
-                        if cb then cb(i.KeyCode) end
-                    end
-                end))
-                return g
-            end
-
-            function g:textbox(text,def,cb)
-                local f = Instance.new("Frame")
-                f.Size = UDim2.new(1,0,0,40)
-                f.BackgroundTransparency = 1
-                f.Parent = cnt
-
-                local lbl = Instance.new("TextLabel")
-                lbl.Text = text
-                lbl.Size = UDim2.new(1,0,0,15)
-                lbl.BackgroundTransparency = 1
-                lbl.TextXAlignment = Enum.TextXAlignment.Left
-                lbl.TextColor3 = t.dim
-                lbl.Font = t.font
-                lbl.TextSize = 13
-                lbl.Parent = f
-
-                local tb = Instance.new("TextBox")
-                tb.Size = UDim2.new(1,0,0,20)
-                tb.Position = UDim2.new(0,0,0,18)
-                tb.BackgroundColor3 = t.dark
-                tb.BorderColor3 = t.stroke
-                tb.Text = def or ""
-                tb.PlaceholderText = "Enter..."
-                tb.TextColor3 = t.text
-                tb.Font = t.font
-                tb.TextSize = 12
-                tb.ClearTextOnFocus = false
-                tb.Parent = f
-
-                tb.FocusLost:Connect(function()
-                    if cb then cb(tb.Text) end
-                end)
-                return g
-            end
-
-            function g:configdropdown(text,updatefunc)
-                local f = Instance.new("Frame")
-                f.Size = UDim2.new(1,0,0,40)
-                f.BackgroundTransparency = 1
-                f.ClipsDescendants = false
-                f.ZIndex = 10
-                f.Parent = cnt
-
-                local lbl = Instance.new("TextLabel")
-                lbl.Text = text
-                lbl.Size = UDim2.new(1,0,0,15)
-                lbl.BackgroundTransparency = 1
-                lbl.TextXAlignment = Enum.TextXAlignment.Left
-                lbl.TextColor3 = t.dim
-                lbl.Font = t.font
-                lbl.TextSize = 13
-                lbl.Parent = f
-
-                local box = Instance.new("TextButton")
-                box.Size = UDim2.new(1,0,0,20)
-                box.Position = UDim2.new(0,0,0,18)
-                box.BackgroundColor3 = t.dark
-                box.BorderColor3 = t.stroke
-                box.Text = "Select... ▼"
-                box.TextColor3 = t.text
-                box.Font = t.font
-                box.TextSize = 13
-                box.Parent = f
-
-                local ol = Instance.new("Frame")
-                ol.Size = UDim2.new(1,0,0,20)
-                ol.Position = UDim2.new(0,0,0,38)
-                ol.BackgroundColor3 = t.darker
-                ol.BorderColor3 = t.stroke
-                ol.Visible = false
-                ol.ZIndex = 100
-                ol.Parent = f
-                local oll = Instance.new("UIListLayout")
-                oll.Parent = ol
-
-                local open = false
-                box.MouseButton1Click:Connect(function()
-                    open = not open
-                    ol.Visible = open
-                    if open and updatefunc then
-                        updatefunc(box,ol,f)
-                    end
-                end)
-                return g,box,ol,f
-            end
-
+            
             return g
         end
         return tl
@@ -543,289 +316,14 @@ function lib:create(title)
     return tabs
 end
 
-function lib:createhotkeys(parent)
-    local f = Instance.new("Frame")
-    f.Name = "HK"
-    f.Size = UDim2.new(0,160,0,24)
-    f.Position = UDim2.new(1,-170,0,200)
-    f.BackgroundColor3 = t.main
-    f.BackgroundTransparency = 0.1
-    f.BorderSizePixel = 0
-    f.Active = true
-    f.Parent = parent
-
-    local s = Instance.new("UIStroke")
-    s.Color = t.stroke
-    s.Parent = f
-
-    local gl = Instance.new("Frame")
-    gl.Size = UDim2.new(1,0,0,2)
-    gl.BorderSizePixel = 0
-    gl.Parent = f
-
-    local ug = Instance.new("UIGradient")
-    ug.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0,t.accent),
-        ColorSequenceKeypoint.new(1,Color3.fromRGB(100,200,50))
-    })
-    ug.Parent = gl
-
-    local title = Instance.new("TextLabel")
-    title.Text = "hotkeys"
-    title.Size = UDim2.new(1,0,0,20)
-    title.Position = UDim2.new(0,0,0,3)
-    title.BackgroundTransparency = 1
-    title.Font = t.font
-    title.TextSize = 11
-    title.TextColor3 = t.dim
-    title.Parent = f
-
-    local cont = Instance.new("Frame")
-    cont.Name = "C"
-    cont.Size = UDim2.new(1,-8,1,-24)
-    cont.Position = UDim2.new(0,4,0,22)
-    cont.BackgroundTransparency = 1
-    cont.Parent = f
-
-    local list = Instance.new("UIListLayout")
-    list.Padding = UDim.new(0,2)
-    list.Parent = cont
-
-    list:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        f.Size = UDim2.new(0,160,0,math.max(24,list.AbsoluteContentSize.Y + 26))
-    end)
-
-    local drag,dstart,dpos = false,nil,nil
-    f.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 then
-            drag = true
-            dstart = i.Position
-            dpos = f.Position
-        end
-    end)
-
-    f.InputChanged:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseMovement and drag then
-            local d = i.Position - dstart
-            f.Position = UDim2.new(dpos.X.Scale,dpos.X.Offset + d.X,dpos.Y.Scale,dpos.Y.Offset + d.Y)
-        end
-    end)
-
-    table.insert(r.conns,uis.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 then
-            drag = false
-        end
-    end))
-
-    return f
-end
-
-function lib:createwatermark(parent)
-    local f = Instance.new("Frame")
-    f.Size = UDim2.new(0,200,0,22)
-    f.Position = UDim2.new(0,10,0,10)
-    f.BackgroundColor3 = t.main
-    f.BackgroundTransparency = 0.1
-    f.BorderSizePixel = 0
-    f.Parent = parent
-
-    local s = Instance.new("UIStroke")
-    s.Color = t.stroke
-    s.Parent = f
-
-    local gl = Instance.new("Frame")
-    gl.Size = UDim2.new(1,0,0,2)
-    gl.BorderSizePixel = 0
-    gl.Parent = f
-
-    local ug = Instance.new("UIGradient")
-    ug.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0,t.accent),
-        ColorSequenceKeypoint.new(1,Color3.fromRGB(100,200,50))
-    })
-    ug.Parent = gl
-
-    local txt = Instance.new("TextLabel")
-    txt.Name = "T"
-    txt.Size = UDim2.new(1,-10,1,-2)
-    txt.Position = UDim2.new(0,5,0,2)
-    txt.BackgroundTransparency = 1
-    txt.Font = t.font
-    txt.TextSize = 11
-    txt.TextColor3 = t.text
-    txt.TextXAlignment = Enum.TextXAlignment.Left
-    txt.Text = "Arcanum.lua | loading..."
-    txt.Parent = f
-
-    return f,txt
-end
-
-function lib:createtimedisplay(parent)
-    local f = Instance.new("Frame")
-    f.Size = UDim2.new(0,80,0,22)
-    f.Position = UDim2.new(1,-90,0,10)
-    f.BackgroundColor3 = t.main
-    f.BackgroundTransparency = 0.1
-    f.BorderSizePixel = 0
-    f.Active = true
-    f.Parent = parent
-
-    local s = Instance.new("UIStroke")
-    s.Color = t.stroke
-    s.Parent = f
-
-    local gl = Instance.new("Frame")
-    gl.Size = UDim2.new(1,0,0,2)
-    gl.BorderSizePixel = 0
-    gl.Parent = f
-
-    local ug = Instance.new("UIGradient")
-    ug.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0,t.accent),
-        ColorSequenceKeypoint.new(1,Color3.fromRGB(100,200,50))
-    })
-    ug.Parent = gl
-
-    local txt = Instance.new("TextLabel")
-    txt.Name = "T"
-    txt.Size = UDim2.new(1,-10,1,-2)
-    txt.Position = UDim2.new(0,5,0,2)
-    txt.BackgroundTransparency = 1
-    txt.Font = t.font
-    txt.TextSize = 11
-    txt.TextColor3 = t.text
-    txt.TextXAlignment = Enum.TextXAlignment.Center
-    txt.Text = "--:--:--"
-    txt.Parent = f
-
-    local drag,dstart,dpos = false,nil,nil
-    f.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 then
-            drag = true
-            dstart = i.Position
-            dpos = f.Position
-        end
-    end)
-
-    f.InputChanged:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseMovement and drag then
-            local d = i.Position - dstart
-            f.Position = UDim2.new(dpos.X.Scale,dpos.X.Offset + d.X,dpos.Y.Scale,dpos.Y.Offset + d.Y)
-        end
-    end)
-
-    table.insert(r.conns,uis.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 then
-            drag = false
-        end
-    end))
-
-    return f,txt
-end
-
-function lib:updatehotkeys(hkframe,hotkeys)
-    if not hkframe then return end
-    local cont = hkframe:FindFirstChild("C")
-    if not cont then return end
-
-    for _,c in ipairs(cont:GetChildren()) do
-        if c:IsA("Frame") then c:Destroy() end
-    end
-
-    for name,data in pairs(hotkeys) do
-        if data.active then
-            local e = Instance.new("Frame")
-            e.Size = UDim2.new(1,0,0,16)
-            e.BackgroundTransparency = 1
-            e.Parent = cont
-
-            local nl = Instance.new("TextLabel")
-            nl.Text = name
-            nl.Size = UDim2.new(0.65,0,1,0)
-            nl.BackgroundTransparency = 1
-            nl.TextXAlignment = Enum.TextXAlignment.Left
-            nl.Font = t.font
-            nl.TextSize = 11
-            nl.TextColor3 = t.text
-            nl.Parent = e
-
-            local kl = Instance.new("TextLabel")
-            kl.Text = "["..data.key.."]"
-            kl.Size = UDim2.new(0.35,0,1,0)
-            kl.Position = UDim2.new(0.65,0,0,0)
-            kl.BackgroundTransparency = 1
-            kl.TextXAlignment = Enum.TextXAlignment.Right
-            kl.Font = t.font
-            kl.TextSize = 10
-            kl.TextColor3 = t.dim
-            kl.Parent = e
-        end
-    end
-end
-
-function lib:createdtindicators(parent)
-    local indicators = {}
-    local positions = {
-        Forward = UDim2.new(0.5,-15,1,-100),
-        Back = UDim2.new(0.5,-15,1,-40),
-        Left = UDim2.new(0.5,-55,1,-70),
-        Right = UDim2.new(0.5,25,1,-70)
-    }
-
-    local arrows = {
-        Forward = "▲",
-        Back = "▼",
-        Left = "◄",
-        Right = "►"
-    }
-
-    for name,pos in pairs(positions) do
-        local f = Instance.new("Frame")
-        f.Size = UDim2.new(0,30,0,30)
-        f.Position = pos
-        f.BackgroundColor3 = Color3.fromRGB(30,30,30)
-        f.BackgroundTransparency = 0.3
-        f.BorderSizePixel = 0
-        f.Parent = parent
-
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0,6)
-        corner.Parent = f
-
-        local stroke = Instance.new("UIStroke")
-        stroke.Color = Color3.fromRGB(60,60,60)
-        stroke.Thickness = 1
-        stroke.Parent = f
-
-        local txt = Instance.new("TextLabel")
-        txt.Size = UDim2.new(1,0,1,0)
-        txt.BackgroundTransparency = 1
-        txt.Text = arrows[name]
-        txt.TextColor3 = Color3.fromRGB(255,50,50)
-        txt.TextSize = 18
-        txt.Font = Enum.Font.GothamBold
-        txt.Parent = f
-
-        indicators[name] = {
-            frame = f,
-            text = txt,
-            stroke = stroke,
-            canPeek = false
-        }
-    end
-
-    return indicators
-end
-
 function lib:cleanup()
     for _,c in ipairs(r.conns) do
         pcall(function() c:Disconnect() end)
     end
-    r.conns = {}
+    r.conns={}
     if r.gui then r.gui:Destroy() end
-    r.gui = nil
-    r.main = nil
+    r.gui=nil
+    r.main=nil
 end
-
 
 return lib
