@@ -305,11 +305,12 @@ function RageModule:HandleScope(weapon, shouldScope)
 	if not self.autoScope or not weapon.scope then return end
 	
 	if shouldScope and not self.isScoped then
-		pcall(function()
+		local success = pcall(function()
 			weapon.scope:FireServer(true)
 		end)
-		self.isScoped = true
-		task.wait(0.05)
+		if success then
+			self.isScoped = true
+		end
 	elseif not shouldScope and self.isScoped then
 		pcall(function()
 			weapon.scope:FireServer(false)
@@ -412,9 +413,10 @@ function RageModule:MainLoop()
 	local weapon = self:GetWeapon()
 	if not weapon then return end
 	
-	self:HandleScope(weapon, true)
-	
 	local targets = self:GetTargets()
+	if #targets == 0 then return end
+	
+	self:HandleScope(weapon, true)
 	
 	for _, target in ipairs(targets) do
 		local hitboxPart, visiblePos = nil, nil
@@ -424,15 +426,26 @@ function RageModule:MainLoop()
 		else
 			hitboxPart = self:GetHitboxPart(target.character)
 			
-			if hitboxPart and self.wallCheck then
-				local canSee, pos = self:MultiPointCheck(myHead.Position, hitboxPart, {myChar, target.character})
-				if canSee then
-					visiblePos = pos
+			if hitboxPart then
+				if self.wallCheck then
+					if self.multiPoint then
+						local canSee, pos = self:MultiPointCheck(myHead.Position, hitboxPart, {myChar, target.character})
+						if canSee then
+							visiblePos = pos
+						else
+							hitboxPart = nil
+						end
+					else
+						local canSee = self:WallCheck(myHead.Position, hitboxPart.Position, {myChar, target.character})
+						if canSee then
+							visiblePos = hitboxPart.Position
+						else
+							hitboxPart = nil
+						end
+					end
 				else
-					hitboxPart = nil
+					visiblePos = hitboxPart.Position
 				end
-			else
-				visiblePos = hitboxPart and hitboxPart.Position or nil
 			end
 		end
 		
@@ -451,7 +464,6 @@ function RageModule:MainLoop()
 		
 		if self.autoStop then
 			self:ApplyAutoStop()
-			task.wait(0.05)
 		end
 		
 		local success = self:Shoot(weapon, myHead.Position, predictedPos, hitboxPart)
@@ -471,6 +483,9 @@ function RageModule:Start()
 	end)
 	
 	print("[Rage] Module started")
+	print("[Rage] Auto-fire:", self.autoFire)
+	print("[Rage] Wall check:", self.wallCheck)
+	print("[Rage] Multi-point:", self.multiPoint)
 end
 
 function RageModule:SetEnabled(value)
