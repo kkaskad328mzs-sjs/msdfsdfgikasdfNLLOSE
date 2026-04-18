@@ -66,7 +66,7 @@ function RageModule:GetWeapon()
 	local char = self.player.Character
 	if not char then return nil end
 	
-	for _, tool in pairs(char:GetChildren()) do
+	for _, tool in ipairs(char:GetChildren()) do
 		if tool:IsA("Tool") and tool.Name == "SSG-08" then
 			local remotes = tool:FindFirstChild("Remotes")
 			if remotes then
@@ -105,7 +105,7 @@ function RageModule:GetTargets()
 	local myRoot = myChar:FindFirstChild("HumanoidRootPart")
 	if not myRoot then return targets end
 	
-	for _, targetPlayer in pairs(self.Players:GetPlayers()) do
+	for _, targetPlayer in ipairs(self.Players:GetPlayers()) do
 		if targetPlayer ~= self.player and self:IsEnemy(targetPlayer) then
 			local targetChar = targetPlayer.Character
 			if targetChar and self:IsAlive(targetChar) then
