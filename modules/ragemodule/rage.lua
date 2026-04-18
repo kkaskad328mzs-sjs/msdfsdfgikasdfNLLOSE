@@ -229,7 +229,14 @@ function RageModule:WallCheck(origin, targetPos, ignoreList)
 	
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = ignoreList
+	params.FilterDescendantsInstances = {}
+	
+	for _, item in ipairs(ignoreList) do
+		if item and typeof(item) == "Instance" then
+			table.insert(params.FilterDescendantsInstances, item)
+		end
+	end
+	
 	params.IgnoreWater = true
 	
 	local result = self.Workspace:Raycast(origin, direction, params)
@@ -239,7 +246,7 @@ function RageModule:WallCheck(origin, targetPos, ignoreList)
 	end
 	
 	for _, char in ipairs(ignoreList) do
-		if result.Instance:IsDescendantOf(char) then
+		if char and typeof(char) == "Instance" and result.Instance:IsDescendantOf(char) then
 			return true
 		end
 	end
