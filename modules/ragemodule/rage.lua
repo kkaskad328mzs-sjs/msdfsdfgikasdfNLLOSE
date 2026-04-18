@@ -23,9 +23,13 @@ function RageModule.new(player)
 	self.minDamageEnabled = false
 	self.minDamageValue = 20
 	self.minDamageOverkill = true
+	self.autoScope = true
+	self.multiPoint = true
+	self.autoStop = false
 	
 	self.fireRate = 0.1
 	self.lastShot = 0
+	self.isScoped = false
 	
 	self.hitboxParts = {
 		Head = {"Head"},
@@ -71,8 +75,16 @@ function RageModule:GetWeapon()
 			local remotes = tool:FindFirstChild("Remotes")
 			if remotes then
 				local fireShot = remotes:FindFirstChild("FireShot")
+				local scope = remotes:FindFirstChild("Scope")
+				local shotAck = remotes:FindFirstChild("ShotAck")
+				
 				if fireShot and fireShot:IsA("RemoteEvent") then
-					return fireShot
+					return {
+						fireShot = fireShot,
+						scope = scope,
+						shotAck = shotAck,
+						tool = tool
+					}
 				end
 			end
 		end
@@ -168,9 +180,11 @@ function RageModule:ScanBestHitbox(myHead, target)
 		for _, partName in ipairs(group.parts) do
 			local part = target.character:FindFirstChild(partName)
 			if part then
-				local canSee = true
+				local canSee, visiblePos = false, part.Position
 				if self.wallCheck then
-					canSee = self:WallCheck(myHead.Position, part.Position, {self.player.Character, target.character})
+					canSee, visiblePos = self:MultiPointCheck(myHead.Position, part, {self.player.Character, target.character})
+				else
+					canSee = true
 				end
 				
 				if canSee then
@@ -178,7 +192,7 @@ function RageModule:ScanBestHitbox(myHead, target)
 					
 					if self.minDamageOverkill then
 						if damage >= targetHealth then
-							return part
+							return part, visiblePos
 						end
 					end
 					
@@ -191,7 +205,7 @@ function RageModule:ScanBestHitbox(myHead, target)
 		end
 	end
 	
-	return bestPart
+	return bestPart, bestPart and bestPart.Position or nil
 end
 
 function RageModule:GetHitboxPart(character)
@@ -233,7 +247,76 @@ function RageModule:WallCheck(origin, targetPos, ignoreList)
 	return false
 end
 
-function RageModule:PredictPosition(targetPart, targetRoot)
+function RageModule:MultiPointCheck(origin, targetPart, ignoreList)
+	if not self.multiPoint then
+		return self:WallCheck(origin, targetPart.Position, ignoreList)
+	end
+	
+	local offsets = {
+		Vector3.new(0, 0, 0),
+		Vector3.new(0, 0.3, 0),
+		Vector3.new(0, -0.3, 0),
+		Vector3.new(0.3, 0, 0),
+		Vector3.new(-0.3, 0, 0),
+	}
+	
+	for _, offset in ipairs(offsets) do
+		local targetPos = targetPart.Position + offset
+		if self:WallCheck(origin, targetPos, ignoreList) then
+			return true, targetPos
+		end
+	end
+	
+	return false, targetPart.Position
+end
+
+function RageModule:ApplyAutoStop()
+	if not self.autoStop then return end
+	
+	local myChar = self.player.Character
+	if not myChar then return end
+	
+	local humanoid = myChar:FindFirstChild("Humanoid")
+	local rootPart = myChar:FindFirstChild("HumanoidRootPart")
+	
+	if not humanoid or not rootPart then return end
+	if humanoid.FloorMaterial == Enum.Material.Air then return end
+	
+	local bodyVel = Instance.new("BodyVelocity")
+	bodyVel.Velocity = Vector3.new(0, 0, 0)
+	bodyVel.MaxForce = Vector3.new(100000, 0, 100000)
+	bodyVel.P = 10000
+	bodyVel.Parent = rootPart
+	
+	local oldSpeed = humanoid.WalkSpeed
+	humanoid.WalkSpeed = 0
+	
+	task.delay(0.15, function()
+		if bodyVel and bodyVel.Parent then
+			bodyVel:Destroy()
+		end
+		if humanoid and humanoid.Parent then
+			humanoid.WalkSpeed = oldSpeed
+		end
+	end)
+end
+
+function RageModule:HandleScope(weapon, shouldScope)
+	if not self.autoScope or not weapon.scope then return end
+	
+	if shouldScope and not self.isScoped then
+		pcall(function()
+			weapon.scope:FireServer(true)
+		end)
+		self.isScoped = true
+		task.wait(0.05)
+	elseif not shouldScope and self.isScoped then
+		pcall(function()
+			weapon.scope:FireServer(false)
+		end)
+		self.isScoped = false
+	end
+end
 	if not self.predictionEnabled then
 		return targetPart.Position
 	end
@@ -300,11 +383,15 @@ function RageModule:CalculateHitChance(origin, targetPart, targetChar, spreadAng
 	return math.floor((hits / self.hitchanceIterations) * 100)
 end
 
-function RageModule:Shoot(fireShot, origin, targetPos, targetPart)
+function RageModule:Shoot(weapon, origin, targetPos, targetPart)
 	local direction = (targetPos - origin).Unit
 	
 	local success = pcall(function()
-		fireShot:FireServer(origin, direction, targetPart)
+		weapon.fireShot:FireServer(origin, direction, targetPart)
+		
+		if weapon.shotAck then
+			weapon.shotAck:FireServer()
+		end
 	end)
 	
 	return success
@@ -322,28 +409,34 @@ function RageModule:MainLoop()
 	local myHead = myChar:FindFirstChild("Head")
 	if not myHead then return end
 	
-	local fireShot = self:GetWeapon()
-	if not fireShot then return end
+	local weapon = self:GetWeapon()
+	if not weapon then return end
+	
+	self:HandleScope(weapon, true)
 	
 	local targets = self:GetTargets()
 	
 	for _, target in ipairs(targets) do
-		local hitboxPart = nil
+		local hitboxPart, visiblePos = nil, nil
 		
 		if self.minDamageEnabled then
-			hitboxPart = self:ScanBestHitbox(myHead, target)
+			hitboxPart, visiblePos = self:ScanBestHitbox(myHead, target)
 		else
 			hitboxPart = self:GetHitboxPart(target.character)
 			
 			if hitboxPart and self.wallCheck then
-				local canSee = self:WallCheck(myHead.Position, hitboxPart.Position, {myChar, target.character})
-				if not canSee then
+				local canSee, pos = self:MultiPointCheck(myHead.Position, hitboxPart, {myChar, target.character})
+				if canSee then
+					visiblePos = pos
+				else
 					hitboxPart = nil
 				end
+			else
+				visiblePos = hitboxPart and hitboxPart.Position or nil
 			end
 		end
 		
-		if not hitboxPart then continue end
+		if not hitboxPart or not visiblePos then continue end
 		
 		local predictedPos = self:PredictPosition(hitboxPart, target.root)
 		
@@ -356,7 +449,12 @@ function RageModule:MainLoop()
 			end
 		end
 		
-		local success = self:Shoot(fireShot, myHead.Position, predictedPos, hitboxPart)
+		if self.autoStop then
+			self:ApplyAutoStop()
+			task.wait(0.05)
+		end
+		
+		local success = self:Shoot(weapon, myHead.Position, predictedPos, hitboxPart)
 		
 		if success then
 			self.lastShot = now
@@ -433,6 +531,18 @@ end
 
 function RageModule:SetMinDamageOverkill(value)
 	self.minDamageOverkill = value
+end
+
+function RageModule:SetAutoScope(value)
+	self.autoScope = value
+end
+
+function RageModule:SetMultiPoint(value)
+	self.multiPoint = value
+end
+
+function RageModule:SetAutoStop(value)
+	self.autoStop = value
 end
 
 return RageModule
