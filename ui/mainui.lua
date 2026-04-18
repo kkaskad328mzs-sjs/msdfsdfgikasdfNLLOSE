@@ -37,6 +37,27 @@ function lib:create(title)
     gl.BackgroundColor3=t.accent
     gl.Parent=w
     
+    local ug=Instance.new("UIGradient")
+    ug.Color=ColorSequence.new({
+        ColorSequenceKeypoint.new(0,Color3.fromRGB(255,50,50)),
+        ColorSequenceKeypoint.new(0.17,Color3.fromRGB(255,150,50)),
+        ColorSequenceKeypoint.new(0.33,Color3.fromRGB(255,255,50)),
+        ColorSequenceKeypoint.new(0.5,Color3.fromRGB(50,255,50)),
+        ColorSequenceKeypoint.new(0.67,Color3.fromRGB(50,150,255)),
+        ColorSequenceKeypoint.new(0.83,Color3.fromRGB(150,50,255)),
+        ColorSequenceKeypoint.new(1,Color3.fromRGB(255,50,150))
+    })
+    ug.Parent=gl
+    
+    task.spawn(function()
+        local offset=0
+        while gl and gl.Parent do
+            offset=(offset+0.005)%1
+            ug.Offset=Vector2.new(offset,0)
+            task.wait(0.03)
+        end
+    end)
+    
     local tl=Instance.new("TextLabel")
     tl.Text=title
     tl.Size=UDim2.new(1,0,0,28)
