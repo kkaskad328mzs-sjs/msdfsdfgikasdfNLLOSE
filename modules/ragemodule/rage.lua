@@ -20,8 +20,6 @@ function RageModule.new(player)
 	self.rbTeamCheck = true
 	self.rbHitchance = 100
 	self.rbHitchanceEnabled = false
-	self.rbMinDamage = 0
-	self.rbMinDamageEnabled = false
 	self.rbMultiPoint = true
 	self.rbAutoStop = false
 	
@@ -40,29 +38,7 @@ function RageModule.new(player)
 	self.RayP.IgnoreWater = true
 	
 	self.PLAYER_CACHE_INTERVAL = 0.4
-	self.BULLET_SPEED = 1000
 	self.frame = 0
-	
-	self.BODY_PART_MULTIPLIERS = {
-		["Head"] = 4.0,
-		["UpperTorso"] = 1.0,
-		["LowerTorso"] = 1.0,
-		["Torso"] = 1.0,
-		["HumanoidRootPart"] = 1.0,
-		["LeftUpperArm"] = 0.75,
-		["RightUpperArm"] = 0.75,
-		["LeftUpperLeg"] = 0.6,
-		["RightUpperLeg"] = 0.6,
-		["Left Leg"] = 0.6,
-		["Right Leg"] = 0.6,
-	}
-	
-	self.MIN_DAMAGE_PRIORITY = {
-		{name = "Legs", parts = {"LeftUpperLeg", "RightUpperLeg", "Left Leg", "Right Leg"}},
-		{name = "Arms", parts = {"LeftUpperArm", "RightUpperArm", "Left Arm", "Right Arm"}},
-		{name = "Body", parts = {"UpperTorso", "LowerTorso", "Torso", "HumanoidRootPart"}},
-		{name = "Head", parts = {"Head"}},
-	}
 	
 	return self
 end
@@ -198,21 +174,6 @@ function RageModule:MultiPointWallCheck(origin, targetPart, targetChar)
 	return false
 end
 
-function RageModule:CalculateDamage(partName, distance)
-	local multiplier = self.BODY_PART_MULTIPLIERS[partName] or 0.5
-	local damage = 54 * multiplier
-	
-	if distance > 300 then
-		damage = damage * 0.3
-	elseif distance > 200 then
-		damage = damage * 0.5
-	elseif distance > 100 then
-		damage = damage * 0.8
-	end
-	
-	return math.floor(damage)
-end
-
 function RageModule:CheckHitchance()
 	if not self.rbHitchanceEnabled then
 		return true
@@ -227,45 +188,6 @@ function RageModule:CheckHitchance()
 	end
 	
 	return math.random(1, 100) <= self.rbHitchance
-end
-
-function RageModule:GetBestTargetPart(data)
-	if self.rbMinDamageEnabled and self.rbMinDamage > 0 then
-		for _, group in ipairs(self.MIN_DAMAGE_PRIORITY) do
-			for _, partName in ipairs(group.parts) do
-				local part = data.c:FindFirstChild(partName)
-				if part then
-					local damage = self:CalculateDamage(partName, data.dist)
-					if damage >= self.rbMinDamage then
-						if self:MultiPointWallCheck(self.myHead.Position, part, data.c) then
-							return part
-						end
-					end
-				end
-			end
-		end
-		return nil
-	end
-	
-	local tgt = self.rbHitbox == "Head" and data.head or data.torso or data.r
-	if tgt and self:MultiPointWallCheck(self.myHead.Position, tgt, data.c) then
-		return tgt
-	end
-	
-	return nil
-end
-
-function RageModule:PredictPosition(part, rootPart, distance)
-	local vel = rootPart.AssemblyLinearVelocity
-	if vel.Magnitude < 1 then
-		return part.Position
-	end
-	
-	local travelTime = distance / self.BULLET_SPEED
-	local ping = self.player:GetNetworkPing()
-	local predTime = (ping + travelTime) * self.rbPredMulti
-	
-	return part.Position + Vector3.new(vel.X, 0, vel.Z) * predTime
 end
 
 function RageModule:ApplyAutoStop()
@@ -378,10 +300,28 @@ function RageModule:MainLoop()
 						end
 					end
 					
-					local tgt = self:GetBestTargetPart(d)
+					local tgt = self.rbHitbox == "Head" and d.head or d.torso or d.r
 					if tgt then
-						best = {data = d, part = tgt}
-						break
+						if self.rbWallCheck then
+							if self.rbMultiPoint then
+								if self:MultiPointWallCheck(head.Position, tgt, d.c) then
+									best = d
+									break
+								end
+							else
+								local dir = tgt.Position - head.Position
+								self.RayP.FilterDescendantsInstances = {self.myChar}
+								local res = self.Workspace:Raycast(head.Position, dir, self.RayP)
+								
+								if not res or res.Instance:IsDescendantOf(d.c) then
+									best = d
+									break
+								end
+							end
+						else
+							best = d
+							break
+						end
 					end
 				end
 			end
@@ -397,8 +337,13 @@ function RageModule:MainLoop()
 				
 				local fs = self:GetFireShot()
 				if fs then
-					local pos = self:PredictPosition(best.part, best.data.r, best.data.dist)
-					pcall(fs.FireServer, fs, head.Position, (pos - head.Position).Unit, best.part)
+					local tgt = self.rbHitbox == "Head" and best.head or best.torso or best.r
+					local vel = best.r.AssemblyLinearVelocity
+					local pos = tgt.Position
+					if vel.Magnitude > 1 then
+						pos = pos + Vector3.new(vel.X, 0, vel.Z) * self.player:GetNetworkPing() * self.rbPredMulti
+					end
+					pcall(fs.FireServer, fs, head.Position, (pos - head.Position).Unit, tgt)
 					self.rbLast = now
 				end
 			end
@@ -466,14 +411,6 @@ end
 
 function RageModule:SetHitchanceEnabled(value)
 	self.rbHitchanceEnabled = value
-end
-
-function RageModule:SetMinDamage(value)
-	self.rbMinDamage = value
-end
-
-function RageModule:SetMinDamageEnabled(value)
-	self.rbMinDamageEnabled = value
 end
 
 function RageModule:SetMultiPoint(value)
