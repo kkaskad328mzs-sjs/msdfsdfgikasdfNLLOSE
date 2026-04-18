@@ -1,5 +1,5 @@
 local lib = {}
-lib.runtime = {gui=nil,main=nil,drag=false,dragStart=nil,startPos=nil,conns={},sliderDrag=nil}
+lib.runtime = {gui=nil,main=nil,drag=false,dragInput=nil,dragStart=nil,startPos=nil,conns={},sliderDrag=nil,resizing=false,resizeStart=nil,resizeStartSize=nil}
 lib.theme = {
     main=Color3.fromRGB(17,17,17),group=Color3.fromRGB(22,22,22),stroke=Color3.fromRGB(35,35,35),
     accent=Color3.fromRGB(80,200,120),text=Color3.fromRGB(255,255,255),dim=Color3.fromRGB(150,150,150),
@@ -9,6 +9,7 @@ lib.theme = {
 local t=lib.theme
 local r=lib.runtime
 local uis=game:GetService("UserInputService")
+local ts=game:GetService("TweenService")
 
 function lib:create(title)
     local coreGui=game:GetService("CoreGui")
@@ -62,10 +63,42 @@ function lib:create(title)
     ug.Parent=gl
     
     task.spawn(function()
-        local offset=0
+        local hue=0
         while gl and gl.Parent do
+            hue=(hue+0.001)%1
+            ug.Offset=Vector2.new(-hue,0)
+            task.wait()
+        end
+    end)
+    
+    local centerText=Instance.new("TextLabel")
+    centerText.Text="ARCANUM"
+    centerText.Size=UDim2.new(0,300,0,60)
+    centerText.Position=UDim2.new(0.5,-150,0.5,-30)
+    centerText.BackgroundTransparency=1
+    centerText.Font=Enum.Font.GothamBold
+    centerText.TextSize=48
+    centerText.TextTransparency=0.95
+    centerText.ZIndex=0
+    centerText.Parent=r.gui
+    
+    local ctGrad=Instance.new("UIGradient")
+    ctGrad.Color=ColorSequence.new({
+        ColorSequenceKeypoint.new(0,Color3.fromRGB(255,50,50)),
+        ColorSequenceKeypoint.new(0.17,Color3.fromRGB(255,150,50)),
+        ColorSequenceKeypoint.new(0.33,Color3.fromRGB(255,255,50)),
+        ColorSequenceKeypoint.new(0.5,Color3.fromRGB(50,255,50)),
+        ColorSequenceKeypoint.new(0.67,Color3.fromRGB(50,150,255)),
+        ColorSequenceKeypoint.new(0.83,Color3.fromRGB(150,50,255)),
+        ColorSequenceKeypoint.new(1,Color3.fromRGB(255,50,150))
+    })
+    ctGrad.Parent=centerText
+    
+    task.spawn(function()
+        local offset=0
+        while centerText and centerText.Parent do
             offset=(offset+0.002)%2
-            ug.Offset=Vector2.new(offset,0)
+            ctGrad.Offset=Vector2.new(offset,0)
             task.wait()
         end
     end)
@@ -81,45 +114,29 @@ function lib:create(title)
     tl.TextXAlignment=Enum.TextXAlignment.Left
     tl.Parent=w
     
-    local resizer=Instance.new("Frame")
-    resizer.Size=UDim2.new(0,20,0,20)
-    resizer.Position=UDim2.new(1,-20,1,-20)
+    local resizer=Instance.new("ImageLabel")
+    resizer.Size=UDim2.new(0,16,0,16)
+    resizer.Position=UDim2.new(1,-18,1,-18)
     resizer.BackgroundTransparency=1
+    resizer.Image="rbxasset://textures/ui/GuiImagePlaceholder.png"
+    resizer.ImageColor3=t.dim
+    resizer.ImageTransparency=0.5
     resizer.Parent=w
     
     local resizerBtn=Instance.new("TextButton")
-    resizerBtn.Size=UDim2.new(1,0,1,0)
+    resizerBtn.Size=UDim2.new(0,20,0,20)
+    resizerBtn.Position=UDim2.new(1,-20,1,-20)
     resizerBtn.BackgroundTransparency=1
     resizerBtn.Text=""
-    resizerBtn.Parent=resizer
-    
-    local resizing=false
-    local resizeStart=nil
-    local startSize=nil
+    resizerBtn.Parent=w
     
     resizerBtn.InputBegan:Connect(function(i)
         if i.UserInputType==Enum.UserInputType.MouseButton1 then
-            resizing=true
-            resizeStart=i.Position
-            startSize=w.Size
+            r.resizing=true
+            r.resizeStart=Vector2.new(i.Position.X,i.Position.Y)
+            r.resizeStartSize=w.AbsoluteSize
         end
     end)
-    
-    resizerBtn.InputChanged:Connect(function(i)
-        if i.UserInputType==Enum.UserInputType.MouseMovement and resizing then
-            local delta=i.Position-resizeStart
-            local newW=math.max(450,startSize.X.Offset+delta.X)
-            local newH=math.max(350,startSize.Y.Offset+delta.Y)
-            w.Size=UDim2.new(0,newW,0,newH)
-            w.Position=UDim2.new(0.5,-newW/2,0.5,-newH/2)
-        end
-    end)
-    
-    table.insert(r.conns,uis.InputEnded:Connect(function(i)
-        if i.UserInputType==Enum.UserInputType.MouseButton1 then
-            resizing=false
-        end
-    end))
     
     local tc=Instance.new("Frame")
     tc.Size=UDim2.new(1,-20,0,30)
@@ -158,21 +175,33 @@ function lib:create(title)
     pc.Parent=w
     
     w.InputBegan:Connect(function(i)
-        if i.UserInputType==Enum.UserInputType.MouseButton1 and i.Position.Y<w.AbsolutePosition.Y+30 then
-            r.drag=true
-            r.dragStart=i.Position
-            r.startPos=w.Position
-        end
-    end)
-    
-    w.InputChanged:Connect(function(i)
-        if i.UserInputType==Enum.UserInputType.MouseMovement and r.drag then
-            local d=i.Position-r.dragStart
-            w.Position=UDim2.new(r.startPos.X.Scale,r.startPos.X.Offset+d.X,r.startPos.Y.Scale,r.startPos.Y.Offset+d.Y)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 then
+            local mousePos=Vector2.new(i.Position.X,i.Position.Y)
+            local winPos=w.AbsolutePosition
+            if mousePos.Y<winPos.Y+32 then
+                r.drag=true
+                r.dragInput=i
+                r.dragStart=mousePos
+                r.startPos=w.AbsolutePosition
+            end
         end
     end)
     
     table.insert(r.conns,uis.InputChanged:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseMovement then
+            if r.drag and r.dragInput then
+                local delta=Vector2.new(i.Position.X,i.Position.Y)-r.dragStart
+                local newPos=r.startPos+delta
+                w.Position=UDim2.new(0,newPos.X,0,newPos.Y)
+            end
+            if r.resizing then
+                local mousePos=Vector2.new(i.Position.X,i.Position.Y)
+                local delta=mousePos-r.resizeStart
+                local newW=math.max(450,r.resizeStartSize.X+delta.X)
+                local newH=math.max(350,r.resizeStartSize.Y+delta.Y)
+                w.Size=UDim2.new(0,newW,0,newH)
+            end
+        end
         if r.sliderDrag and i.UserInputType==Enum.UserInputType.MouseMovement then
             local d=r.sliderDrag
             local rel=math.clamp((i.Position.X-d.bg.AbsolutePosition.X)/d.bg.AbsoluteSize.X,0,1)
@@ -186,7 +215,9 @@ function lib:create(title)
     table.insert(r.conns,uis.InputEnded:Connect(function(i)
         if i.UserInputType==Enum.UserInputType.MouseButton1 then
             r.drag=false
+            r.dragInput=nil
             r.sliderDrag=nil
+            r.resizing=false
         end
     end))
     
@@ -501,16 +532,17 @@ function lib:create(title)
                 boxStroke.Parent=box
                 
                 local popup=Instance.new("Frame")
-                popup.Size=UDim2.new(0,200,0,math.min(#opts*20,200))
+                popup.Size=UDim2.new(0,0,0,0)
                 popup.Position=UDim2.new(0,0,0,36)
-                popup.BackgroundColor3=t.darker
+                popup.BackgroundColor3=t.dark
                 popup.BorderSizePixel=0
                 popup.Visible=false
+                popup.ClipsDescendants=true
                 popup.ZIndex=200
                 popup.Parent=r.gui
                 
                 local popCorner=Instance.new("UICorner")
-                popCorner.CornerRadius=UDim.new(0,5)
+                popCorner.CornerRadius=UDim.new(0,3)
                 popCorner.Parent=popup
                 
                 local popStroke=Instance.new("UIStroke")
@@ -538,7 +570,7 @@ function lib:create(title)
                 for _,opt in ipairs(opts) do
                     local ob=Instance.new("TextButton")
                     ob.Size=UDim2.new(1,0,0,20)
-                    ob.BackgroundColor3=t.dark
+                    ob.BackgroundColor3=t.darker
                     ob.BackgroundTransparency=opt==cur and 0 or 1
                     ob.BorderSizePixel=0
                     ob.Text=opt
@@ -551,6 +583,8 @@ function lib:create(title)
                     ob.MouseButton1Click:Connect(function()
                         cur=opt
                         box.Text=opt.." ▼"
+                        ts:Create(popup,TweenInfo.new(0.2,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.new(0,0,0,0)}):Play()
+                        task.wait(0.2)
                         popup.Visible=false
                         open=false
                         for _,b in ipairs(scroll:GetChildren()) do
@@ -565,10 +599,17 @@ function lib:create(title)
                 
                 box.MouseButton1Click:Connect(function()
                     open=not open
-                    popup.Visible=open
                     if open then
                         local absPos=box.AbsolutePosition
+                        local targetH=math.min(#opts*20+4,200)
                         popup.Position=UDim2.new(0,absPos.X,0,absPos.Y+20)
+                        popup.Size=UDim2.new(0,0,0,0)
+                        popup.Visible=true
+                        ts:Create(popup,TweenInfo.new(0.2,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.new(0,box.AbsoluteSize.X,0,targetH)}):Play()
+                    else
+                        ts:Create(popup,TweenInfo.new(0.2,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.new(0,0,0,0)}):Play()
+                        task.wait(0.2)
+                        popup.Visible=false
                     end
                 end)
                 
@@ -577,12 +618,14 @@ function lib:create(title)
                         local mp=uis:GetMouseLocation()
                         local pp=popup.AbsolutePosition
                         local ps=popup.AbsoluteSize
-                        if mp.X<pp.X or mp.X>pp.X+ps.X or mp.Y<pp.Y or mp.Y>pp.Y+ps.Y then
-                            if mp.X<box.AbsolutePosition.X or mp.X>box.AbsolutePosition.X+box.AbsoluteSize.X or
-                               mp.Y<box.AbsolutePosition.Y or mp.Y>box.AbsolutePosition.Y+box.AbsoluteSize.Y then
-                                popup.Visible=false
-                                open=false
-                            end
+                        local bp=box.AbsolutePosition
+                        local bs=box.AbsoluteSize
+                        if (mp.X<pp.X or mp.X>pp.X+ps.X or mp.Y<pp.Y or mp.Y>pp.Y+ps.Y) and
+                           (mp.X<bp.X or mp.X>bp.X+bs.X or mp.Y<bp.Y or mp.Y>bp.Y+bs.Y) then
+                            ts:Create(popup,TweenInfo.new(0.2,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.new(0,0,0,0)}):Play()
+                            task.wait(0.2)
+                            popup.Visible=false
+                            open=false
                         end
                     end
                 end))
@@ -598,7 +641,7 @@ function lib:create(title)
                 
                 local lbl=Instance.new("TextLabel")
                 lbl.Text=text
-                lbl.Size=UDim2.new(0.6,0,1,0)
+                lbl.Size=UDim2.new(0.65,0,1,0)
                 lbl.BackgroundTransparency=1
                 lbl.TextXAlignment=Enum.TextXAlignment.Left
                 lbl.TextColor3=t.dim
@@ -607,14 +650,14 @@ function lib:create(title)
                 lbl.Parent=f
                 
                 local b=Instance.new("TextButton")
-                b.Size=UDim2.new(0.35,0,1,0)
-                b.Position=UDim2.new(0.65,0,0,0)
+                b.Size=UDim2.new(0.3,0,0,16)
+                b.Position=UDim2.new(0.7,0,0,1)
                 b.BackgroundColor3=t.dark
                 b.BorderSizePixel=0
                 b.Text="["..def.Name.."]"
                 b.TextColor3=t.dim
                 b.Font=t.font
-                b.TextSize=10
+                b.TextSize=9
                 b.Parent=f
                 
                 local bCorner=Instance.new("UICorner")
@@ -646,36 +689,229 @@ function lib:create(title)
             
             function g:textbox(text,def,cb)
                 local f=Instance.new("Frame")
-                f.Size=UDim2.new(1,0,0,40)
+                f.Size=UDim2.new(1,0,0,34)
                 f.BackgroundTransparency=1
                 f.Parent=cnt
                 
                 local lbl=Instance.new("TextLabel")
                 lbl.Text=text
-                lbl.Size=UDim2.new(1,0,0,15)
+                lbl.Size=UDim2.new(1,0,0,12)
                 lbl.BackgroundTransparency=1
                 lbl.TextXAlignment=Enum.TextXAlignment.Left
                 lbl.TextColor3=t.dim
                 lbl.Font=t.font
-                lbl.TextSize=13
+                lbl.TextSize=11
                 lbl.Parent=f
                 
                 local tb=Instance.new("TextBox")
-                tb.Size=UDim2.new(1,0,0,20)
-                tb.Position=UDim2.new(0,0,0,18)
+                tb.Size=UDim2.new(1,0,0,18)
+                tb.Position=UDim2.new(0,0,0,16)
                 tb.BackgroundColor3=t.dark
-                tb.BorderColor3=t.stroke
+                tb.BorderSizePixel=0
                 tb.Text=def or ""
                 tb.PlaceholderText="Enter..."
                 tb.TextColor3=t.text
                 tb.Font=t.font
-                tb.TextSize=12
+                tb.TextSize=11
                 tb.ClearTextOnFocus=false
                 tb.Parent=f
+                
+                local tbCorner=Instance.new("UICorner")
+                tbCorner.CornerRadius=UDim.new(0,3)
+                tbCorner.Parent=tb
+                
+                local tbStroke=Instance.new("UIStroke")
+                tbStroke.Color=t.stroke
+                tbStroke.Thickness=1
+                tbStroke.Parent=tb
                 
                 tb.FocusLost:Connect(function()
                     if cb then cb(tb.Text) end
                 end)
+                return g
+            end
+            
+            function g:colorpicker(text,def,cb)
+                local f=Instance.new("Frame")
+                f.Size=UDim2.new(1,0,0,18)
+                f.BackgroundTransparency=1
+                f.Parent=cnt
+                
+                local lbl=Instance.new("TextLabel")
+                lbl.Text=text
+                lbl.Size=UDim2.new(0.7,0,1,0)
+                lbl.BackgroundTransparency=1
+                lbl.TextXAlignment=Enum.TextXAlignment.Left
+                lbl.TextColor3=t.dim
+                lbl.Font=t.font
+                lbl.TextSize=11
+                lbl.Parent=f
+                
+                local preview=Instance.new("TextButton")
+                preview.Size=UDim2.new(0,40,0,16)
+                preview.Position=UDim2.new(1,-42,0,1)
+                preview.BackgroundColor3=def
+                preview.BorderSizePixel=0
+                preview.Text=""
+                preview.Parent=f
+                
+                local pCorner=Instance.new("UICorner")
+                pCorner.CornerRadius=UDim.new(0,3)
+                pCorner.Parent=preview
+                
+                local pStroke=Instance.new("UIStroke")
+                pStroke.Color=t.stroke
+                pStroke.Thickness=1
+                pStroke.Parent=preview
+                
+                local picker=Instance.new("Frame")
+                picker.Size=UDim2.new(0,0,0,0)
+                picker.BackgroundColor3=t.darker
+                picker.BorderSizePixel=0
+                picker.Visible=false
+                picker.ClipsDescendants=true
+                picker.ZIndex=200
+                picker.Parent=r.gui
+                
+                local pkCorner=Instance.new("UICorner")
+                pkCorner.CornerRadius=UDim.new(0,5)
+                pkCorner.Parent=picker
+                
+                local pkStroke=Instance.new("UIStroke")
+                pkStroke.Color=t.accent
+                pkStroke.Thickness=1
+                pkStroke.Parent=picker
+                
+                local wheel=Instance.new("ImageLabel")
+                wheel.Size=UDim2.new(0,120,0,120)
+                wheel.Position=UDim2.new(0,10,0,10)
+                wheel.BackgroundTransparency=1
+                wheel.Image="rbxassetid://698052001"
+                wheel.ZIndex=201
+                wheel.Parent=picker
+                
+                local alphaSlider=Instance.new("Frame")
+                alphaSlider.Size=UDim2.new(0,120,0,12)
+                alphaSlider.Position=UDim2.new(0,10,0,138)
+                alphaSlider.BackgroundColor3=Color3.fromRGB(255,255,255)
+                alphaSlider.BorderSizePixel=0
+                alphaSlider.ZIndex=201
+                alphaSlider.Parent=picker
+                
+                local asCorner=Instance.new("UICorner")
+                asCorner.CornerRadius=UDim.new(0,3)
+                asCorner.Parent=alphaSlider
+                
+                local asGrad=Instance.new("UIGradient")
+                asGrad.Transparency=NumberSequence.new({
+                    NumberSequenceKeypoint.new(0,0),
+                    NumberSequenceKeypoint.new(1,1)
+                })
+                asGrad.Parent=alphaSlider
+                
+                local alphaFill=Instance.new("Frame")
+                alphaFill.Size=UDim2.new(1,0,1,0)
+                alphaFill.BackgroundColor3=def
+                alphaFill.BorderSizePixel=0
+                alphaFill.ZIndex=200
+                alphaFill.Parent=alphaSlider
+                
+                local afCorner=Instance.new("UICorner")
+                afCorner.CornerRadius=UDim.new(0,3)
+                afCorner.Parent=alphaFill
+                
+                local curColor=def
+                local curAlpha=1
+                local open=false
+                
+                preview.MouseButton1Click:Connect(function()
+                    open=not open
+                    if open then
+                        local absPos=preview.AbsolutePosition
+                        picker.Position=UDim2.new(0,absPos.X-100,0,absPos.Y+20)
+                        picker.Size=UDim2.new(0,0,0,0)
+                        picker.Visible=true
+                        ts:Create(picker,TweenInfo.new(0.2,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.new(0,140,0,160)}):Play()
+                    else
+                        ts:Create(picker,TweenInfo.new(0.2,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.new(0,0,0,0)}):Play()
+                        task.wait(0.2)
+                        picker.Visible=false
+                    end
+                end)
+                
+                wheel.InputBegan:Connect(function(i)
+                    if i.UserInputType==Enum.UserInputType.MouseButton1 then
+                        local function update()
+                            local mp=uis:GetMouseLocation()
+                            local center=wheel.AbsolutePosition+wheel.AbsoluteSize/2
+                            local delta=mp-center
+                            local angle=math.atan2(delta.Y,delta.X)
+                            local dist=math.min((delta.Magnitude/(wheel.AbsoluteSize.X/2)),1)
+                            local hue=(angle+math.pi)/(2*math.pi)
+                            curColor=Color3.fromHSV(hue,dist,1)
+                            preview.BackgroundColor3=curColor
+                            alphaFill.BackgroundColor3=curColor
+                            if cb then cb(curColor,curAlpha) end
+                        end
+                        update()
+                        local conn
+                        conn=uis.InputChanged:Connect(function(i2)
+                            if i2.UserInputType==Enum.UserInputType.MouseMovement then
+                                update()
+                            end
+                        end)
+                        local endConn
+                        endConn=uis.InputEnded:Connect(function(i2)
+                            if i2.UserInputType==Enum.UserInputType.MouseButton1 then
+                                conn:Disconnect()
+                                endConn:Disconnect()
+                            end
+                        end)
+                    end
+                end)
+                
+                alphaSlider.InputBegan:Connect(function(i)
+                    if i.UserInputType==Enum.UserInputType.MouseButton1 then
+                        local function update()
+                            local mp=uis:GetMouseLocation()
+                            local rel=math.clamp((mp.X-alphaSlider.AbsolutePosition.X)/alphaSlider.AbsoluteSize.X,0,1)
+                            curAlpha=1-rel
+                            if cb then cb(curColor,curAlpha) end
+                        end
+                        update()
+                        local conn
+                        conn=uis.InputChanged:Connect(function(i2)
+                            if i2.UserInputType==Enum.UserInputType.MouseMovement then
+                                update()
+                            end
+                        end)
+                        local endConn
+                        endConn=uis.InputEnded:Connect(function(i2)
+                            if i2.UserInputType==Enum.UserInputType.MouseButton1 then
+                                conn:Disconnect()
+                                endConn:Disconnect()
+                            end
+                        end)
+                    end
+                end)
+                
+                table.insert(r.conns,uis.InputBegan:Connect(function(i)
+                    if i.UserInputType==Enum.UserInputType.MouseButton1 and open then
+                        local mp=uis:GetMouseLocation()
+                        local pp=picker.AbsolutePosition
+                        local ps=picker.AbsoluteSize
+                        local bp=preview.AbsolutePosition
+                        local bs=preview.AbsoluteSize
+                        if (mp.X<pp.X or mp.X>pp.X+ps.X or mp.Y<pp.Y or mp.Y>pp.Y+ps.Y) and
+                           (mp.X<bp.X or mp.X>bp.X+bs.X or mp.Y<bp.Y or mp.Y>bp.Y+bs.Y) then
+                            ts:Create(picker,TweenInfo.new(0.2,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.new(0,0,0,0)}):Play()
+                            task.wait(0.2)
+                            picker.Visible=false
+                            open=false
+                        end
+                    end
+                end))
+                
                 return g
             end
             
