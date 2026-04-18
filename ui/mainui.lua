@@ -62,8 +62,15 @@ function lib:create(title)
     tlay.FillDirection=Enum.FillDirection.Horizontal
     tlay.HorizontalAlignment=Enum.HorizontalAlignment.Center
     tlay.VerticalAlignment=Enum.VerticalAlignment.Center
-    tlay.Padding=UDim.new(0,15)
+    tlay.Padding=UDim.new(0,8)
     tlay.Parent=tc
+    
+    local tcPadding=Instance.new("UIPadding")
+    tcPadding.PaddingLeft=UDim.new(0,8)
+    tcPadding.PaddingRight=UDim.new(0,8)
+    tcPadding.PaddingTop=UDim.new(0,4)
+    tcPadding.PaddingBottom=UDim.new(0,4)
+    tcPadding.Parent=tc
     
     local pc=Instance.new("Frame")
     pc.Size=UDim2.new(1,-20,1,-90)
@@ -109,7 +116,6 @@ function lib:create(title)
         local btn=Instance.new("TextButton")
         btn.Text=name
         btn.Size=UDim2.new(0,80,1,-4)
-        btn.Position=UDim2.new(0,0,0,2)
         btn.BackgroundColor3=Color3.fromRGB(0,0,0)
         btn.BackgroundTransparency=1
         btn.Font=Enum.Font.GothamMedium
