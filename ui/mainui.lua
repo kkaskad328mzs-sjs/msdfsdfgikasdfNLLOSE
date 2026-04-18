@@ -64,9 +64,9 @@ function lib:create(title)
     task.spawn(function()
         local offset=0
         while gl and gl.Parent do
-            offset=(offset+0.005)%1
+            offset=(offset+0.002)%2
             ug.Offset=Vector2.new(offset,0)
-            task.wait(0.03)
+            task.wait()
         end
     end)
     
@@ -80,6 +80,46 @@ function lib:create(title)
     tl.TextColor3=t.accent
     tl.TextXAlignment=Enum.TextXAlignment.Left
     tl.Parent=w
+    
+    local resizer=Instance.new("Frame")
+    resizer.Size=UDim2.new(0,20,0,20)
+    resizer.Position=UDim2.new(1,-20,1,-20)
+    resizer.BackgroundTransparency=1
+    resizer.Parent=w
+    
+    local resizerBtn=Instance.new("TextButton")
+    resizerBtn.Size=UDim2.new(1,0,1,0)
+    resizerBtn.BackgroundTransparency=1
+    resizerBtn.Text=""
+    resizerBtn.Parent=resizer
+    
+    local resizing=false
+    local resizeStart=nil
+    local startSize=nil
+    
+    resizerBtn.InputBegan:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 then
+            resizing=true
+            resizeStart=i.Position
+            startSize=w.Size
+        end
+    end)
+    
+    resizerBtn.InputChanged:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseMovement and resizing then
+            local delta=i.Position-resizeStart
+            local newW=math.max(450,startSize.X.Offset+delta.X)
+            local newH=math.max(350,startSize.Y.Offset+delta.Y)
+            w.Size=UDim2.new(0,newW,0,newH)
+            w.Position=UDim2.new(0.5,-newW/2,0.5,-newH/2)
+        end
+    end)
+    
+    table.insert(r.conns,uis.InputEnded:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 then
+            resizing=false
+        end
+    end))
     
     local tc=Instance.new("Frame")
     tc.Size=UDim2.new(1,-20,0,30)
@@ -246,35 +286,49 @@ function lib:create(title)
             
             local brd=Instance.new("Frame")
             brd.Size=UDim2.new(1,0,0,0)
-            brd.Position=UDim2.new(0,0,0,8)
-            brd.BackgroundColor3=t.main
-            brd.BorderColor3=t.stroke
+            brd.Position=UDim2.new(0,0,0,6)
+            brd.BackgroundColor3=t.darker
+            brd.BorderSizePixel=0
             brd.AutomaticSize=Enum.AutomaticSize.Y
             brd.Parent=grp
             
+            local brdCorner=Instance.new("UICorner")
+            brdCorner.CornerRadius=UDim.new(0,5)
+            brdCorner.Parent=brd
+            
+            local brdStroke=Instance.new("UIStroke")
+            brdStroke.Color=t.stroke
+            brdStroke.Thickness=1
+            brdStroke.Parent=brd
+            
             local ttl=Instance.new("TextLabel")
             ttl.Text=gtitle:upper()
-            ttl.Position=UDim2.new(0,10,0,12)
+            ttl.Position=UDim2.new(0,8,0,10)
             ttl.AutomaticSize=Enum.AutomaticSize.X
-            ttl.BackgroundColor3=t.main
+            ttl.BackgroundColor3=t.darker
             ttl.BorderSizePixel=0
             ttl.TextColor3=t.accent
             ttl.Font=Enum.Font.GothamBold
-            ttl.TextSize=11
+            ttl.TextSize=10
             ttl.ZIndex=2
             ttl.Parent=grp
             
+            local ttlPad=Instance.new("UIPadding")
+            ttlPad.PaddingLeft=UDim.new(0,4)
+            ttlPad.PaddingRight=UDim.new(0,4)
+            ttlPad.Parent=ttl
+            
             local cnt=Instance.new("Frame")
-            cnt.Size=UDim2.new(1,-16,0,0)
-            cnt.Position=UDim2.new(0,8,0,22)
+            cnt.Size=UDim2.new(1,-12,0,0)
+            cnt.Position=UDim2.new(0,6,0,18)
             cnt.BackgroundTransparency=1
             cnt.AutomaticSize=Enum.AutomaticSize.Y
             cnt.Parent=brd
             local cl=Instance.new("UIListLayout")
-            cl.Padding=UDim.new(0,8)
+            cl.Padding=UDim.new(0,6)
             cl.Parent=cnt
             local pd=Instance.new("UIPadding")
-            pd.PaddingBottom=UDim.new(0,8)
+            pd.PaddingBottom=UDim.new(0,6)
             pd.Parent=brd
             
             local g={}
@@ -333,32 +387,45 @@ function lib:create(title)
             
             function g:slider(text,min,max,def,cb)
                 local f=Instance.new("Frame")
-                f.Size=UDim2.new(1,0,0,35)
+                f.Size=UDim2.new(1,0,0,30)
                 f.BackgroundTransparency=1
                 f.Parent=cnt
                 
                 local lbl=Instance.new("TextLabel")
                 lbl.Text=text..": "..def
-                lbl.Size=UDim2.new(1,0,0,15)
+                lbl.Size=UDim2.new(1,0,0,12)
                 lbl.BackgroundTransparency=1
                 lbl.TextXAlignment=Enum.TextXAlignment.Left
                 lbl.TextColor3=t.dim
                 lbl.Font=t.font
-                lbl.TextSize=13
+                lbl.TextSize=11
                 lbl.Parent=f
                 
                 local bg=Instance.new("Frame")
-                bg.Size=UDim2.new(1,0,0,12)
-                bg.Position=UDim2.new(0,0,0,18)
+                bg.Size=UDim2.new(1,0,0,10)
+                bg.Position=UDim2.new(0,0,0,16)
                 bg.BackgroundColor3=t.dark
-                bg.BorderColor3=t.stroke
+                bg.BorderSizePixel=0
                 bg.Parent=f
+                
+                local bgCorner=Instance.new("UICorner")
+                bgCorner.CornerRadius=UDim.new(0,3)
+                bgCorner.Parent=bg
+                
+                local bgStroke=Instance.new("UIStroke")
+                bgStroke.Color=t.stroke
+                bgStroke.Thickness=1
+                bgStroke.Parent=bg
                 
                 local fill=Instance.new("Frame")
                 fill.Size=UDim2.new((def-min)/(max-min),0,1,0)
                 fill.BackgroundColor3=t.accent
                 fill.BorderSizePixel=0
                 fill.Parent=bg
+                
+                local fillCorner=Instance.new("UICorner")
+                fillCorner.CornerRadius=UDim.new(0,3)
+                fillCorner.Parent=fill
                 
                 local data={bg=bg,fill=fill,lbl=lbl,text=text,min=min,max=max,val=def,cb=cb}
                 bg.InputBegan:Connect(function(i)
@@ -371,14 +438,24 @@ function lib:create(title)
             
             function g:button(text,cb)
                 local b=Instance.new("TextButton")
-                b.Size=UDim2.new(1,0,0,22)
+                b.Size=UDim2.new(1,0,0,20)
                 b.BackgroundColor3=t.dark
-                b.BorderColor3=t.stroke
+                b.BorderSizePixel=0
                 b.Text=text
                 b.TextColor3=t.text
                 b.Font=t.font
-                b.TextSize=13
+                b.TextSize=11
                 b.Parent=cnt
+                
+                local bCorner=Instance.new("UICorner")
+                bCorner.CornerRadius=UDim.new(0,4)
+                bCorner.Parent=b
+                
+                local bStroke=Instance.new("UIStroke")
+                bStroke.Color=t.stroke
+                bStroke.Thickness=1
+                bStroke.Parent=b
+                
                 b.MouseButton1Click:Connect(function()
                     if cb then cb() end
                 end)
@@ -387,7 +464,7 @@ function lib:create(title)
             
             function g:dropdown(text,opts,def,cb)
                 local f=Instance.new("Frame")
-                f.Size=UDim2.new(1,0,0,40)
+                f.Size=UDim2.new(1,0,0,34)
                 f.BackgroundTransparency=1
                 f.ClipsDescendants=false
                 f.ZIndex=10
@@ -395,35 +472,65 @@ function lib:create(title)
                 
                 local lbl=Instance.new("TextLabel")
                 lbl.Text=text
-                lbl.Size=UDim2.new(1,0,0,15)
+                lbl.Size=UDim2.new(1,0,0,12)
                 lbl.BackgroundTransparency=1
                 lbl.TextXAlignment=Enum.TextXAlignment.Left
                 lbl.TextColor3=t.dim
                 lbl.Font=t.font
-                lbl.TextSize=13
+                lbl.TextSize=11
                 lbl.Parent=f
                 
                 local box=Instance.new("TextButton")
-                box.Size=UDim2.new(1,0,0,20)
-                box.Position=UDim2.new(0,0,0,18)
+                box.Size=UDim2.new(1,0,0,18)
+                box.Position=UDim2.new(0,0,0,16)
                 box.BackgroundColor3=t.dark
-                box.BorderColor3=t.stroke
+                box.BorderSizePixel=0
                 box.Text=def.." ▼"
                 box.TextColor3=t.text
                 box.Font=t.font
-                box.TextSize=13
+                box.TextSize=11
                 box.Parent=f
                 
-                local ol=Instance.new("Frame")
-                ol.Size=UDim2.new(1,0,0,#opts*20)
-                ol.Position=UDim2.new(0,0,0,38)
-                ol.BackgroundColor3=t.darker
-                ol.BorderColor3=t.stroke
-                ol.Visible=false
-                ol.ZIndex=100
-                ol.Parent=f
+                local boxCorner=Instance.new("UICorner")
+                boxCorner.CornerRadius=UDim.new(0,3)
+                boxCorner.Parent=box
+                
+                local boxStroke=Instance.new("UIStroke")
+                boxStroke.Color=t.stroke
+                boxStroke.Thickness=1
+                boxStroke.Parent=box
+                
+                local popup=Instance.new("Frame")
+                popup.Size=UDim2.new(0,200,0,math.min(#opts*20,200))
+                popup.Position=UDim2.new(0,0,0,36)
+                popup.BackgroundColor3=t.darker
+                popup.BorderSizePixel=0
+                popup.Visible=false
+                popup.ZIndex=200
+                popup.Parent=r.gui
+                
+                local popCorner=Instance.new("UICorner")
+                popCorner.CornerRadius=UDim.new(0,5)
+                popCorner.Parent=popup
+                
+                local popStroke=Instance.new("UIStroke")
+                popStroke.Color=t.accent
+                popStroke.Thickness=1
+                popStroke.Parent=popup
+                
+                local scroll=Instance.new("ScrollingFrame")
+                scroll.Size=UDim2.new(1,-4,1,-4)
+                scroll.Position=UDim2.new(0,2,0,2)
+                scroll.BackgroundTransparency=1
+                scroll.BorderSizePixel=0
+                scroll.ScrollBarThickness=3
+                scroll.ScrollBarImageColor3=t.accent
+                scroll.CanvasSize=UDim2.new(0,0,0,#opts*20)
+                scroll.ZIndex=201
+                scroll.Parent=popup
+                
                 local oll=Instance.new("UIListLayout")
-                oll.Parent=ol
+                oll.Parent=scroll
                 
                 local cur=def
                 local open=false
@@ -432,23 +539,24 @@ function lib:create(title)
                     local ob=Instance.new("TextButton")
                     ob.Size=UDim2.new(1,0,0,20)
                     ob.BackgroundColor3=t.dark
+                    ob.BackgroundTransparency=opt==cur and 0 or 1
                     ob.BorderSizePixel=0
                     ob.Text=opt
                     ob.TextColor3=opt==cur and t.accent or t.dim
                     ob.Font=t.font
-                    ob.TextSize=12
-                    ob.ZIndex=101
-                    ob.Parent=ol
+                    ob.TextSize=11
+                    ob.ZIndex=202
+                    ob.Parent=scroll
                     
                     ob.MouseButton1Click:Connect(function()
                         cur=opt
                         box.Text=opt.." ▼"
-                        ol.Visible=false
+                        popup.Visible=false
                         open=false
-                        f.Size=UDim2.new(1,0,0,40)
-                        for _,b in ipairs(ol:GetChildren()) do
+                        for _,b in ipairs(scroll:GetChildren()) do
                             if b:IsA("TextButton") then
                                 b.TextColor3=b.Text==cur and t.accent or t.dim
+                                b.BackgroundTransparency=b.Text==cur and 0 or 1
                             end
                         end
                         if cb then cb(cur) end
@@ -457,15 +565,34 @@ function lib:create(title)
                 
                 box.MouseButton1Click:Connect(function()
                     open=not open
-                    ol.Visible=open
-                    f.Size=open and UDim2.new(1,0,0,40+#opts*20) or UDim2.new(1,0,0,40)
+                    popup.Visible=open
+                    if open then
+                        local absPos=box.AbsolutePosition
+                        popup.Position=UDim2.new(0,absPos.X,0,absPos.Y+20)
+                    end
                 end)
+                
+                table.insert(r.conns,uis.InputBegan:Connect(function(i)
+                    if i.UserInputType==Enum.UserInputType.MouseButton1 and open then
+                        local mp=uis:GetMouseLocation()
+                        local pp=popup.AbsolutePosition
+                        local ps=popup.AbsoluteSize
+                        if mp.X<pp.X or mp.X>pp.X+ps.X or mp.Y<pp.Y or mp.Y>pp.Y+ps.Y then
+                            if mp.X<box.AbsolutePosition.X or mp.X>box.AbsolutePosition.X+box.AbsoluteSize.X or
+                               mp.Y<box.AbsolutePosition.Y or mp.Y>box.AbsolutePosition.Y+box.AbsoluteSize.Y then
+                                popup.Visible=false
+                                open=false
+                            end
+                        end
+                    end
+                end))
+                
                 return g
             end
             
             function g:keybind(text,def,cb)
                 local f=Instance.new("Frame")
-                f.Size=UDim2.new(1,0,0,20)
+                f.Size=UDim2.new(1,0,0,18)
                 f.BackgroundTransparency=1
                 f.Parent=cnt
                 
@@ -476,19 +603,28 @@ function lib:create(title)
                 lbl.TextXAlignment=Enum.TextXAlignment.Left
                 lbl.TextColor3=t.dim
                 lbl.Font=t.font
-                lbl.TextSize=13
+                lbl.TextSize=11
                 lbl.Parent=f
                 
                 local b=Instance.new("TextButton")
-                b.Size=UDim2.new(0.3,0,1,0)
-                b.Position=UDim2.new(0.7,0,0,0)
-                b.BackgroundColor3=Color3.fromRGB(22,22,22)
-                b.BorderColor3=t.stroke
+                b.Size=UDim2.new(0.35,0,1,0)
+                b.Position=UDim2.new(0.65,0,0,0)
+                b.BackgroundColor3=t.dark
+                b.BorderSizePixel=0
                 b.Text="["..def.Name.."]"
                 b.TextColor3=t.dim
                 b.Font=t.font
-                b.TextSize=11
+                b.TextSize=10
                 b.Parent=f
+                
+                local bCorner=Instance.new("UICorner")
+                bCorner.CornerRadius=UDim.new(0,3)
+                bCorner.Parent=b
+                
+                local bStroke=Instance.new("UIStroke")
+                bStroke.Color=t.stroke
+                bStroke.Thickness=1
+                bStroke.Parent=b
                 
                 local waiting=false
                 b.MouseButton1Click:Connect(function()
