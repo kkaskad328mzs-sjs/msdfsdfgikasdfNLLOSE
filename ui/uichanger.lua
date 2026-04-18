@@ -83,11 +83,12 @@ local function addColorOption(parent, text, def, cb)
     lbl.TextSize = 11
     lbl.Parent = f
     
-    local preview = Instance.new("Frame")
+    local preview = Instance.new("TextButton")
     preview.Size = UDim2.new(0, 60, 0, 18)
     preview.Position = UDim2.new(1, -62, 0, 1)
     preview.BackgroundColor3 = def
     preview.BorderSizePixel = 0
+    preview.Text = ""
     preview.Parent = f
     
     local corner = Instance.new("UICorner")
@@ -98,6 +99,113 @@ local function addColorOption(parent, text, def, cb)
     stroke.Color = theme.stroke
     stroke.Thickness = 1
     stroke.Parent = preview
+    
+    local picker = nil
+    local pickerOpen = false
+    
+    preview.MouseButton1Click:Connect(function()
+        pickerOpen = not pickerOpen
+        if pickerOpen then
+            if not picker then
+                picker = Instance.new("Frame")
+                picker.Size = UDim2.new(0, 0, 0, 0)
+                picker.BackgroundColor3 = theme.darker
+                picker.BorderSizePixel = 0
+                picker.Visible = false
+                picker.ClipsDescendants = true
+                picker.ZIndex = 300
+                picker.Parent = parent.Parent.Parent
+                
+                local pkCorner = Instance.new("UICorner")
+                pkCorner.CornerRadius = UDim.new(0, 5)
+                pkCorner.Parent = picker
+                
+                local pkStroke = Instance.new("UIStroke")
+                pkStroke.Color = theme.stroke
+                pkStroke.Thickness = 1
+                pkStroke.Parent = picker
+                
+                local wheel = Instance.new("ImageLabel")
+                wheel.Size = UDim2.new(0, 120, 0, 120)
+                wheel.Position = UDim2.new(0, 10, 0, 10)
+                wheel.BackgroundTransparency = 1
+                wheel.Image = "rbxassetid://698052001"
+                wheel.ZIndex = 301
+                wheel.Parent = picker
+                
+                local alphaSlider = Instance.new("Frame")
+                alphaSlider.Size = UDim2.new(0, 120, 0, 12)
+                alphaSlider.Position = UDim2.new(0, 10, 0, 138)
+                alphaSlider.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+                alphaSlider.BorderSizePixel = 0
+                alphaSlider.ZIndex = 301
+                alphaSlider.Parent = picker
+                
+                local asCorner = Instance.new("UICorner")
+                asCorner.CornerRadius = UDim.new(0, 3)
+                asCorner.Parent = alphaSlider
+                
+                local asGrad = Instance.new("UIGradient")
+                asGrad.Transparency = NumberSequence.new({
+                    NumberSequenceKeypoint.new(0, 0),
+                    NumberSequenceKeypoint.new(1, 1)
+                })
+                asGrad.Parent = alphaSlider
+                
+                local alphaFill = Instance.new("Frame")
+                alphaFill.Size = UDim2.new(1, 0, 1, 0)
+                alphaFill.BackgroundColor3 = def
+                alphaFill.BorderSizePixel = 0
+                alphaFill.ZIndex = 300
+                alphaFill.Parent = alphaSlider
+                
+                local afCorner = Instance.new("UICorner")
+                afCorner.CornerRadius = UDim.new(0, 3)
+                afCorner.Parent = alphaFill
+                
+                wheel.InputBegan:Connect(function(i)
+                    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+                        local function update()
+                            local mp = uis:GetMouseLocation()
+                            local center = wheel.AbsolutePosition + wheel.AbsoluteSize / 2
+                            local delta = mp - center
+                            local angle = math.atan2(delta.Y, delta.X)
+                            local dist = math.min((delta.Magnitude / (wheel.AbsoluteSize.X / 2)), 1)
+                            local hue = (angle + math.pi) / (2 * math.pi)
+                            local newColor = Color3.fromHSV(hue, dist, 1)
+                            preview.BackgroundColor3 = newColor
+                            alphaFill.BackgroundColor3 = newColor
+                            if cb then cb(newColor) end
+                        end
+                        update()
+                        local conn
+                        conn = uis.InputChanged:Connect(function(i2)
+                            if i2.UserInputType == Enum.UserInputType.MouseMovement then
+                                update()
+                            end
+                        end)
+                        local endConn
+                        endConn = uis.InputEnded:Connect(function(i2)
+                            if i2.UserInputType == Enum.UserInputType.MouseButton1 then
+                                conn:Disconnect()
+                                endConn:Disconnect()
+                            end
+                        end)
+                    end
+                end)
+            end
+            
+            local absPos = preview.AbsolutePosition
+            picker.Position = UDim2.new(0, absPos.X - 70, 0, absPos.Y + 22)
+            picker.Size = UDim2.new(0, 0, 0, 0)
+            picker.Visible = true
+            ts:Create(picker, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(0, 140, 0, 160)}):Play()
+        else
+            ts:Create(picker, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Size = UDim2.new(0, 0, 0, 0)}):Play()
+            task.wait(0.15)
+            picker.Visible = false
+        end
+    end)
 end
 
 local function addSliderOption(parent, text, min, max, def, cb)
@@ -141,6 +249,40 @@ local function addSliderOption(parent, text, min, max, def, cb)
     local fillCorner = Instance.new("UICorner")
     fillCorner.CornerRadius = UDim.new(0, 3)
     fillCorner.Parent = fill
+    
+    local dragging = false
+    
+    bg.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            local function update()
+                local mp = uis:GetMouseLocation()
+                local rel = math.clamp((mp.X - bg.AbsolutePosition.X) / bg.AbsoluteSize.X, 0, 1)
+                local val = math.floor(min + (max - min) * rel)
+                fill.Size = UDim2.new(rel, 0, 1, 0)
+                lbl.Text = text .. ": " .. val
+                if cb then cb(val) end
+            end
+            update()
+        end
+    end)
+    
+    uis.InputChanged:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseMovement and dragging then
+            local mp = uis:GetMouseLocation()
+            local rel = math.clamp((mp.X - bg.AbsolutePosition.X) / bg.AbsoluteSize.X, 0, 1)
+            local val = math.floor(min + (max - min) * rel)
+            fill.Size = UDim2.new(rel, 0, 1, 0)
+            lbl.Text = text .. ": " .. val
+            if cb then cb(val) end
+        end
+    end)
+    
+    uis.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
 end
 
 local function addDropdownOption(parent, text, opts, def, cb)
@@ -164,7 +306,7 @@ local function addDropdownOption(parent, text, opts, def, cb)
     box.Position = UDim2.new(0.55, 0, 0, 0)
     box.BackgroundColor3 = theme.dark
     box.BorderSizePixel = 0
-    box.Text = def
+    box.Text = def .. " ▼"
     box.TextColor3 = theme.text
     box.Font = theme.font
     box.TextSize = 10
@@ -178,6 +320,78 @@ local function addDropdownOption(parent, text, opts, def, cb)
     stroke.Color = theme.stroke
     stroke.Thickness = 1
     stroke.Parent = box
+    
+    local popup = nil
+    local popupOpen = false
+    local currentVal = def
+    
+    box.MouseButton1Click:Connect(function()
+        popupOpen = not popupOpen
+        if popupOpen then
+            if not popup then
+                popup = Instance.new("Frame")
+                popup.Size = UDim2.new(0, 0, 0, 0)
+                popup.BackgroundColor3 = theme.dark
+                popup.BorderSizePixel = 0
+                popup.Visible = false
+                popup.ClipsDescendants = true
+                popup.ZIndex = 300
+                popup.Parent = parent.Parent.Parent
+                
+                local popCorner = Instance.new("UICorner")
+                popCorner.CornerRadius = UDim.new(0, 3)
+                popCorner.Parent = popup
+                
+                local popStroke = Instance.new("UIStroke")
+                popStroke.Color = theme.stroke
+                popStroke.Thickness = 1
+                popStroke.Parent = popup
+                
+                local list = Instance.new("UIListLayout")
+                list.Parent = popup
+                
+                for _, opt in ipairs(opts) do
+                    local optBtn = Instance.new("TextButton")
+                    optBtn.Size = UDim2.new(1, 0, 0, 20)
+                    optBtn.BackgroundColor3 = theme.darker
+                    optBtn.BackgroundTransparency = opt == currentVal and 0 or 1
+                    optBtn.BorderSizePixel = 0
+                    optBtn.Text = opt
+                    optBtn.TextColor3 = opt == currentVal and theme.accent or theme.dim
+                    optBtn.Font = theme.font
+                    optBtn.TextSize = 10
+                    optBtn.ZIndex = 301
+                    optBtn.Parent = popup
+                    
+                    optBtn.MouseButton1Click:Connect(function()
+                        currentVal = opt
+                        box.Text = opt .. " ▼"
+                        ts:Create(popup, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Size = UDim2.new(0, box.AbsoluteSize.X, 0, 0)}):Play()
+                        task.wait(0.15)
+                        popup.Visible = false
+                        popupOpen = false
+                        for _, b in ipairs(popup:GetChildren()) do
+                            if b:IsA("TextButton") then
+                                b.TextColor3 = b.Text == currentVal and theme.accent or theme.dim
+                                b.BackgroundTransparency = b.Text == currentVal and 0 or 1
+                            end
+                        end
+                        if cb then cb(currentVal) end
+                    end)
+                end
+            end
+            
+            local absPos = box.AbsolutePosition
+            popup.Position = UDim2.new(0, absPos.X, 0, absPos.Y + 22)
+            popup.Size = UDim2.new(0, 0, 0, 0)
+            popup.Visible = true
+            ts:Create(popup, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(0, box.AbsoluteSize.X, 0, #opts * 20)}):Play()
+        else
+            ts:Create(popup, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Size = UDim2.new(0, box.AbsoluteSize.X, 0, 0)}):Play()
+            task.wait(0.15)
+            popup.Visible = false
+        end
+    end)
 end
 
 local function addTextboxOption(parent, text, def, cb)
@@ -217,6 +431,10 @@ local function addTextboxOption(parent, text, def, cb)
     stroke.Color = theme.stroke
     stroke.Thickness = 1
     stroke.Parent = tb
+    
+    tb.FocusLost:Connect(function()
+        if cb then cb(tb.Text) end
+    end)
 end
 
 local function addButtonOption(parent, text, cb)
@@ -350,15 +568,15 @@ function UIChanger:createSettingsButton(parent)
     
     clickBtn.MouseButton1Click:Connect(function()
         if settingsOpen then
-            ts:Create(settingsFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {Position = UDim2.new(0.5, -250, 0.3, -200)}):Play()
+            ts:Create(settingsFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {Position = UDim2.new(0.5, -225, 0.3, -175)}):Play()
             task.wait(0.2)
             settingsFrame.Visible = false
             settingsOpen = false
         else
             if not settingsFrame then
                 settingsFrame = Instance.new("Frame")
-                settingsFrame.Size = UDim2.new(0, 500, 0, 400)
-                settingsFrame.Position = UDim2.new(0.5, -250, 0.5, -200)
+                settingsFrame.Size = UDim2.new(0, 450, 0, 350)
+                settingsFrame.Position = UDim2.new(0.5, -225, 0.5, -175)
                 settingsFrame.BackgroundColor3 = theme.main
                 settingsFrame.BorderSizePixel = 0
                 settingsFrame.Visible = false
@@ -397,10 +615,69 @@ function UIChanger:createSettingsButton(parent)
                 closeBtn.Parent = settingsFrame
                 
                 closeBtn.MouseButton1Click:Connect(function()
-                    ts:Create(settingsFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {Position = UDim2.new(0.5, -250, 0.3, -200)}):Play()
+                    ts:Create(settingsFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {Position = UDim2.new(0.5, -225, 0.3, -175)}):Play()
                     task.wait(0.2)
                     settingsFrame.Visible = false
                     settingsOpen = false
+                end)
+                
+                local resizer = Instance.new("TextButton")
+                resizer.Size = UDim2.new(0, 16, 0, 16)
+                resizer.Position = UDim2.new(1, -16, 1, -16)
+                resizer.BackgroundTransparency = 1
+                resizer.Text = ""
+                resizer.Parent = settingsFrame
+                
+                local resizing = false
+                local resizeStart = nil
+                local resizeStartSize = nil
+                
+                resizer.InputBegan:Connect(function(i)
+                    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+                        resizing = true
+                        resizeStart = Vector2.new(i.Position.X, i.Position.Y)
+                        resizeStartSize = settingsFrame.AbsoluteSize
+                    end
+                end)
+                
+                local dragFrame = false
+                local dragFrameStart = nil
+                local dragFramePos = nil
+                
+                settingsFrame.InputBegan:Connect(function(i)
+                    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+                        local mousePos = Vector2.new(i.Position.X, i.Position.Y)
+                        local framePos = settingsFrame.AbsolutePosition
+                        if mousePos.Y < framePos.Y + 35 then
+                            dragFrame = true
+                            dragFrameStart = mousePos
+                            dragFramePos = settingsFrame.AbsolutePosition
+                        end
+                    end
+                end)
+                
+                uis.InputChanged:Connect(function(i)
+                    if i.UserInputType == Enum.UserInputType.MouseMovement then
+                        if dragFrame then
+                            local delta = Vector2.new(i.Position.X, i.Position.Y) - dragFrameStart
+                            local newPos = dragFramePos + delta
+                            settingsFrame.Position = UDim2.new(0, newPos.X, 0, newPos.Y)
+                        end
+                        if resizing then
+                            local mousePos = Vector2.new(i.Position.X, i.Position.Y)
+                            local delta = mousePos - resizeStart
+                            local newW = math.max(400, resizeStartSize.X + delta.X)
+                            local newH = math.max(300, resizeStartSize.Y + delta.Y)
+                            settingsFrame.Size = UDim2.new(0, newW, 0, newH)
+                        end
+                    end
+                end)
+                
+                uis.InputEnded:Connect(function(i)
+                    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+                        dragFrame = false
+                        resizing = false
+                    end
                 end)
                 
                 local tabContainer = Instance.new("Frame")
@@ -473,9 +750,9 @@ function UIChanger:createSettingsButton(parent)
                     addButtonOption(page, "Import Config", function() print("Imported!") end)
                 end)
             end
-            settingsFrame.Position = UDim2.new(0.5, -250, 0.3, -200)
+            settingsFrame.Position = UDim2.new(0.5, -225, 0.3, -175)
             settingsFrame.Visible = true
-            ts:Create(settingsFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2.new(0.5, -250, 0.5, -200)}):Play()
+            ts:Create(settingsFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2.new(0.5, -225, 0.5, -175)}):Play()
             settingsOpen = true
         end
     end)
