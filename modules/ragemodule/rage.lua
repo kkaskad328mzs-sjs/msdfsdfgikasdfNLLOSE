@@ -31,6 +31,11 @@ function RageModule.new(player)
 	self.lastShot = 0
 	self.isScoped = false
 	
+	self.targetCache = {}
+	self.targetCacheTime = 0
+	self.TARGET_CACHE_INTERVAL = 0.5
+	self.frameCounter = 0
+	
 	self.hitboxParts = {
 		Head = {"Head"},
 		Torso = {"UpperTorso", "LowerTorso", "Torso"},
@@ -110,6 +115,11 @@ function RageModule:IsEnemy(targetPlayer)
 end
 
 function RageModule:GetTargets()
+	local now = tick()
+	if now - self.targetCacheTime < self.TARGET_CACHE_INTERVAL and #self.targetCache > 0 then
+		return self.targetCache
+	end
+	
 	local targets = {}
 	local myChar = self.player.Character
 	if not myChar then return targets end
@@ -140,6 +150,9 @@ function RageModule:GetTargets()
 	table.sort(targets, function(a, b)
 		return a.distance < b.distance
 	end)
+	
+	self.targetCache = targets
+	self.targetCacheTime = now
 	
 	return targets
 end
@@ -367,11 +380,13 @@ function RageModule:CalculateHitChance(origin, targetPart, targetChar, spreadAng
 		return 100
 	end
 	
+	local iterations = math.min(self.hitchanceIterations, 50)
+	
 	local hits = 0
 	local targetPos = targetPart.Position
 	local targetSize = targetPart.Size
 	
-	for i = 1, self.hitchanceIterations do
+	for i = 1, iterations do
 		local spreadDir = self:SimulateSpread(origin, targetPos, spreadAngle)
 		
 		local params = RaycastParams.new()
@@ -383,14 +398,11 @@ function RageModule:CalculateHitChance(origin, targetPart, targetChar, spreadAng
 		local result = self.Workspace:Raycast(origin, spreadDir * maxDist, params)
 		
 		if result and result.Instance:IsDescendantOf(targetChar) then
-			local hitPart = result.Instance
-			if hitPart == targetPart or hitPart.Parent == targetChar then
-				hits = hits + 1
-			end
+			hits = hits + 1
 		end
 	end
 	
-	return math.floor((hits / self.hitchanceIterations) * 100)
+	return math.floor((hits / iterations) * 100)
 end
 
 function RageModule:Shoot(weapon, origin, targetPos, targetPart)
@@ -409,6 +421,9 @@ end
 
 function RageModule:MainLoop()
 	if not self.enabled or not self.autoFire then return end
+	
+	self.frameCounter = self.frameCounter + 1
+	if self.frameCounter % 3 ~= 0 then return end
 	
 	local now = tick()
 	if now - self.lastShot < self.fireRate then return end
@@ -463,7 +478,7 @@ function RageModule:MainLoop()
 		local predictedPos = self:PredictPosition(hitboxPart, target.root)
 		
 		if self.hitchanceEnabled then
-			local spreadAngle = 0.5
+			local spreadAngle = 0.3
 			local hitchance = self:CalculateHitChance(myHead.Position, hitboxPart, target.character, spreadAngle)
 			
 			if hitchance < self.hitchanceValue then
