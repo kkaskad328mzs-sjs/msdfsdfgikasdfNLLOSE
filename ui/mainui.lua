@@ -2,20 +2,23 @@ local lib = {}
 lib.runtime = {gui=nil,main=nil,drag=false,dragStart=nil,startPos=nil,conns={},sliderDrag=nil}
 lib.theme = {
     main=Color3.fromRGB(17,17,17),group=Color3.fromRGB(22,22,22),stroke=Color3.fromRGB(35,35,35),
-    accent=Color3.fromRGB(130,195,255),text=Color3.fromRGB(255,255,255),dim=Color3.fromRGB(150,150,150),
+    accent=Color3.fromRGB(100,255,150),text=Color3.fromRGB(255,255,255),dim=Color3.fromRGB(150,150,150),
     font=Enum.Font.Gotham,dark=Color3.fromRGB(20,20,20),darker=Color3.fromRGB(15,15,15),border=Color3.fromRGB(40,40,40),
-    accentDark=Color3.fromRGB(90,150,220),tabActive=Color3.fromRGB(25,25,25)
+    accentDark=Color3.fromRGB(60,200,110),tabActive=Color3.fromRGB(25,25,25)
 }
 local t=lib.theme
 local r=lib.runtime
 local uis=game:GetService("UserInputService")
 
 function lib:create(title)
+    local coreGui=game:GetService("CoreGui")
+    local oldGui=coreGui:FindFirstChild("Arc")
+    if oldGui then oldGui:Destroy() end
     if r.gui then r.gui:Destroy() end
     r.gui=Instance.new("ScreenGui")
     r.gui.Name="Arc"
     r.gui.ResetOnSpawn=false
-    r.gui.Parent=game:GetService("CoreGui")
+    r.gui.Parent=coreGui
     
     local w=Instance.new("Frame")
     w.Name="M"
@@ -39,13 +42,11 @@ function lib:create(title)
     
     local ug=Instance.new("UIGradient")
     ug.Color=ColorSequence.new({
-        ColorSequenceKeypoint.new(0,Color3.fromRGB(255,50,50)),
-        ColorSequenceKeypoint.new(0.17,Color3.fromRGB(255,150,50)),
-        ColorSequenceKeypoint.new(0.33,Color3.fromRGB(255,255,50)),
-        ColorSequenceKeypoint.new(0.5,Color3.fromRGB(50,255,50)),
-        ColorSequenceKeypoint.new(0.67,Color3.fromRGB(50,150,255)),
-        ColorSequenceKeypoint.new(0.83,Color3.fromRGB(150,50,255)),
-        ColorSequenceKeypoint.new(1,Color3.fromRGB(255,50,150))
+        ColorSequenceKeypoint.new(0,Color3.fromRGB(50,255,100)),
+        ColorSequenceKeypoint.new(0.25,Color3.fromRGB(100,255,150)),
+        ColorSequenceKeypoint.new(0.5,Color3.fromRGB(150,255,100)),
+        ColorSequenceKeypoint.new(0.75,Color3.fromRGB(100,255,200)),
+        ColorSequenceKeypoint.new(1,Color3.fromRGB(50,255,150))
     })
     ug.Parent=gl
     
@@ -59,43 +60,49 @@ function lib:create(title)
     end)
     
     local tl=Instance.new("TextLabel")
-    tl.Text=title
-    tl.Size=UDim2.new(1,0,0,28)
-    tl.Position=UDim2.new(0,0,0,6)
+    tl.Text=title:upper()
+    tl.Size=UDim2.new(0,200,0,24)
+    tl.Position=UDim2.new(0,12,0,8)
     tl.BackgroundTransparency=1
     tl.Font=Enum.Font.GothamBold
-    tl.TextSize=16
-    tl.TextColor3=t.text
+    tl.TextSize=14
+    tl.TextColor3=t.accent
+    tl.TextXAlignment=Enum.TextXAlignment.Left
     tl.Parent=w
     
     local tc=Instance.new("Frame")
-    tc.Size=UDim2.new(1,-20,0,36)
-    tc.Position=UDim2.new(0,10,0,38)
-    tc.BackgroundColor3=t.tabActive
+    tc.Size=UDim2.new(1,-20,0,32)
+    tc.Position=UDim2.new(0,10,0,40)
+    tc.BackgroundColor3=t.dark
     tc.BorderSizePixel=0
     tc.Parent=w
     
     local tcCorner=Instance.new("UICorner")
-    tcCorner.CornerRadius=UDim.new(0,4)
+    tcCorner.CornerRadius=UDim.new(0,6)
     tcCorner.Parent=tc
+    
+    local tcStroke=Instance.new("UIStroke")
+    tcStroke.Color=t.stroke
+    tcStroke.Thickness=1
+    tcStroke.Parent=tc
     
     local tlay=Instance.new("UIListLayout")
     tlay.FillDirection=Enum.FillDirection.Horizontal
     tlay.HorizontalAlignment=Enum.HorizontalAlignment.Center
     tlay.VerticalAlignment=Enum.VerticalAlignment.Center
-    tlay.Padding=UDim.new(0,8)
+    tlay.Padding=UDim.new(0,6)
     tlay.Parent=tc
     
     local tcPadding=Instance.new("UIPadding")
-    tcPadding.PaddingLeft=UDim.new(0,8)
-    tcPadding.PaddingRight=UDim.new(0,8)
+    tcPadding.PaddingLeft=UDim.new(0,6)
+    tcPadding.PaddingRight=UDim.new(0,6)
     tcPadding.PaddingTop=UDim.new(0,4)
     tcPadding.PaddingBottom=UDim.new(0,4)
     tcPadding.Parent=tc
     
     local pc=Instance.new("Frame")
-    pc.Size=UDim2.new(1,-20,1,-90)
-    pc.Position=UDim2.new(0,10,0,82)
+    pc.Size=UDim2.new(1,-20,1,-88)
+    pc.Position=UDim2.new(0,10,0,80)
     pc.BackgroundTransparency=1
     pc.Parent=w
     
@@ -135,18 +142,25 @@ function lib:create(title)
     local tabs={}
     function tabs:newtab(name)
         local btn=Instance.new("TextButton")
-        btn.Text=name
-        btn.Size=UDim2.new(0,80,1,-4)
-        btn.BackgroundColor3=Color3.fromRGB(0,0,0)
-        btn.BackgroundTransparency=1
-        btn.Font=Enum.Font.GothamMedium
-        btn.TextSize=12
+        btn.Text=name:upper()
+        btn.Size=UDim2.new(0,90,1,-4)
+        btn.BackgroundColor3=t.darker
+        btn.BackgroundTransparency=0
+        btn.BorderSizePixel=0
+        btn.Font=Enum.Font.GothamBold
+        btn.TextSize=11
         btn.TextColor3=t.dim
         btn.Parent=tc
         
         local btnCorner=Instance.new("UICorner")
-        btnCorner.CornerRadius=UDim.new(0,3)
+        btnCorner.CornerRadius=UDim.new(0,4)
         btnCorner.Parent=btn
+        
+        local btnStroke=Instance.new("UIStroke")
+        btnStroke.Color=t.stroke
+        btnStroke.Thickness=1
+        btnStroke.Transparency=1
+        btnStroke.Parent=btn
         
         local page=Instance.new("ScrollingFrame")
         page.Size=UDim2.new(1,0,1,0)
@@ -184,20 +198,25 @@ function lib:create(title)
             for _,tb in ipairs(tc:GetChildren()) do
                 if tb:IsA("TextButton") then 
                     tb.TextColor3=t.dim
-                    tb.BackgroundTransparency=1
+                    tb.BackgroundColor3=t.darker
+                    tb.BackgroundTransparency=0
+                    local stroke=tb:FindFirstChildOfClass("UIStroke")
+                    if stroke then stroke.Transparency=1 end
                 end
             end
             page.Visible=true
             btn.TextColor3=t.accent
-            btn.BackgroundTransparency=0.9
-            btn.BackgroundColor3=t.accent
+            btn.BackgroundColor3=t.dark
+            btnStroke.Transparency=0
+            btnStroke.Color=t.accent
         end)
         
-        if #tc:GetChildren()==2 then
+        if #tc:GetChildren()==5 then
             page.Visible=true
             btn.TextColor3=t.accent
-            btn.BackgroundTransparency=0.9
-            btn.BackgroundColor3=t.accent
+            btn.BackgroundColor3=t.dark
+            btnStroke.Transparency=0
+            btnStroke.Color=t.accent
         end
         
         local tl={}
