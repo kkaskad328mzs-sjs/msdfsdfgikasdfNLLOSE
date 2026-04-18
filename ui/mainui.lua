@@ -1,9 +1,10 @@
 local lib = {}
 lib.runtime = {gui=nil,main=nil,drag=false,dragStart=nil,startPos=nil,conns={},sliderDrag=nil}
 lib.theme = {
-    main=Color3.fromRGB(12,12,12),group=Color3.fromRGB(19,19,19),stroke=Color3.fromRGB(45,45,45),
-    accent=Color3.fromRGB(168,247,50),text=Color3.fromRGB(220,220,220),dim=Color3.fromRGB(140,140,140),
-    font=Enum.Font.Code,dark=Color3.fromRGB(25,25,25),darker=Color3.fromRGB(20,20,20),border=Color3.fromRGB(60,60,60)
+    main=Color3.fromRGB(17,17,17),group=Color3.fromRGB(22,22,22),stroke=Color3.fromRGB(35,35,35),
+    accent=Color3.fromRGB(130,195,255),text=Color3.fromRGB(255,255,255),dim=Color3.fromRGB(150,150,150),
+    font=Enum.Font.Gotham,dark=Color3.fromRGB(20,20,20),darker=Color3.fromRGB(15,15,15),border=Color3.fromRGB(40,40,40),
+    accentDark=Color3.fromRGB(90,150,220),tabActive=Color3.fromRGB(25,25,25)
 }
 local t=lib.theme
 local r=lib.runtime
@@ -30,38 +31,32 @@ function lib:create(title)
     s.Parent=w
     
     local gl=Instance.new("Frame")
-    gl.Size=UDim2.new(1,0,0,2)
+    gl.Size=UDim2.new(1,0,0,3)
     gl.Position=UDim2.new(0,0,0,0)
     gl.BorderSizePixel=0
+    gl.BackgroundColor3=t.accent
     gl.Parent=w
-    
-    local ug=Instance.new("UIGradient")
-    ug.Color=ColorSequence.new({
-        ColorSequenceKeypoint.new(0,Color3.fromRGB(255,0,0)),
-        ColorSequenceKeypoint.new(0.2,Color3.fromRGB(255,255,0)),
-        ColorSequenceKeypoint.new(0.4,Color3.fromRGB(0,255,0)),
-        ColorSequenceKeypoint.new(0.6,Color3.fromRGB(0,255,255)),
-        ColorSequenceKeypoint.new(0.8,Color3.fromRGB(0,0,255)),
-        ColorSequenceKeypoint.new(1,Color3.fromRGB(255,0,255))
-    })
-    ug.Parent=gl
     
     local tl=Instance.new("TextLabel")
     tl.Text=title
-    tl.Size=UDim2.new(1,0,0,20)
-    tl.Position=UDim2.new(0,0,0,4)
+    tl.Size=UDim2.new(1,0,0,28)
+    tl.Position=UDim2.new(0,0,0,6)
     tl.BackgroundTransparency=1
-    tl.Font=t.font
-    tl.TextSize=13
+    tl.Font=Enum.Font.GothamBold
+    tl.TextSize=16
     tl.TextColor3=t.text
     tl.Parent=w
     
     local tc=Instance.new("Frame")
-    tc.Size=UDim2.new(1,-20,0,40)
-    tc.Position=UDim2.new(0,10,0,30)
-    tc.BackgroundColor3=t.group
-    tc.BorderColor3=t.stroke
+    tc.Size=UDim2.new(1,-20,0,36)
+    tc.Position=UDim2.new(0,10,0,38)
+    tc.BackgroundColor3=t.tabActive
+    tc.BorderSizePixel=0
     tc.Parent=w
+    
+    local tcCorner=Instance.new("UICorner")
+    tcCorner.CornerRadius=UDim.new(0,4)
+    tcCorner.Parent=tc
     
     local tlay=Instance.new("UIListLayout")
     tlay.FillDirection=Enum.FillDirection.Horizontal
@@ -71,8 +66,8 @@ function lib:create(title)
     tlay.Parent=tc
     
     local pc=Instance.new("Frame")
-    pc.Size=UDim2.new(1,-20,1,-85)
-    pc.Position=UDim2.new(0,10,0,75)
+    pc.Size=UDim2.new(1,-20,1,-90)
+    pc.Position=UDim2.new(0,10,0,82)
     pc.BackgroundTransparency=1
     pc.Parent=w
     
@@ -113,12 +108,18 @@ function lib:create(title)
     function tabs:newtab(name)
         local btn=Instance.new("TextButton")
         btn.Text=name
-        btn.Size=UDim2.new(0,70,1,0)
+        btn.Size=UDim2.new(0,80,1,-4)
+        btn.Position=UDim2.new(0,0,0,2)
+        btn.BackgroundColor3=Color3.fromRGB(0,0,0)
         btn.BackgroundTransparency=1
-        btn.Font=t.font
-        btn.TextSize=13
+        btn.Font=Enum.Font.GothamMedium
+        btn.TextSize=12
         btn.TextColor3=t.dim
         btn.Parent=tc
+        
+        local btnCorner=Instance.new("UICorner")
+        btnCorner.CornerRadius=UDim.new(0,3)
+        btnCorner.Parent=btn
         
         local page=Instance.new("ScrollingFrame")
         page.Size=UDim2.new(1,0,1,0)
@@ -154,15 +155,22 @@ function lib:create(title)
         btn.MouseButton1Click:Connect(function()
             for _,p in ipairs(pc:GetChildren()) do p.Visible=false end
             for _,tb in ipairs(tc:GetChildren()) do
-                if tb:IsA("TextButton") then tb.TextColor3=t.dim end
+                if tb:IsA("TextButton") then 
+                    tb.TextColor3=t.dim
+                    tb.BackgroundTransparency=1
+                end
             end
             page.Visible=true
             btn.TextColor3=t.accent
+            btn.BackgroundTransparency=0.9
+            btn.BackgroundColor3=t.accent
         end)
         
         if #tc:GetChildren()==2 then
             page.Visible=true
             btn.TextColor3=t.accent
+            btn.BackgroundTransparency=0.9
+            btn.BackgroundColor3=t.accent
         end
         
         local tl={}
@@ -183,14 +191,14 @@ function lib:create(title)
             brd.Parent=grp
             
             local ttl=Instance.new("TextLabel")
-            ttl.Text=gtitle
-            ttl.Position=UDim2.new(0,12,0,14)
+            ttl.Text=gtitle:upper()
+            ttl.Position=UDim2.new(0,10,0,12)
             ttl.AutomaticSize=Enum.AutomaticSize.X
             ttl.BackgroundColor3=t.main
             ttl.BorderSizePixel=0
-            ttl.TextColor3=t.text
-            ttl.Font=t.font
-            ttl.TextSize=12
+            ttl.TextColor3=t.accent
+            ttl.Font=Enum.Font.GothamBold
+            ttl.TextSize=11
             ttl.ZIndex=2
             ttl.Parent=grp
             
