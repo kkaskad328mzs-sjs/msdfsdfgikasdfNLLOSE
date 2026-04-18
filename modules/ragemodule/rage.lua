@@ -318,6 +318,8 @@ function RageModule:HandleScope(weapon, shouldScope)
 		self.isScoped = false
 	end
 end
+
+function RageModule:PredictPosition(targetPart, targetRoot)
 	if not self.predictionEnabled then
 		return targetPart.Position
 	end
