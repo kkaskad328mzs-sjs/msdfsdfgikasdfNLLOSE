@@ -8,512 +8,240 @@ function RageModule.new(player)
 	self.Players = game:GetService("Players")
 	self.RunService = game:GetService("RunService")
 	self.Workspace = game:GetService("Workspace")
-	self.ReplicatedStorage = game:GetService("ReplicatedStorage")
 	
-	self.RAGE_ENABLED = false
-	self.RAGE_HITPART = "Head"
-	self.RAGE_HITCHANCE = 100
-	self.RAGE_HITCHANCE_ENABLED = false
-	self.RAGE_AUTOSHOOT = false
-	self.RAGE_NOSPREAD = false
-	self.MAX_DISTANCE = 1000
+	self.rbEnabled = false
+	self.rbAutoFire = true
+	self.rbHitbox = "Head"
+	self.rbMaxDist = 500
+	self.rbFireRate = 0.1
+	self.rbPredMulti = 1.0
+	self.rbNoAir = true
+	self.rbWallCheck = true
+	self.rbTeamCheck = true
 	
-	self.PREDICTION_ENABLED = true
-	self.PREDICTION_STRENGTH = 5
+	self.fireShot = nil
+	self.fireShotTime = 0
+	self.rbLast = 0
+	self.playerData = {}
+	self.playerDataTime = 0
+	self.myChar = nil
+	self.myHRP = nil
+	self.myHead = nil
 	
-	self.MIN_DAMAGE_ENABLED = false
-	self.MIN_DAMAGE_VALUE = 0
-	self.BASE_DAMAGE = 54
+	self.RayP = RaycastParams.new()
+	self.RayP.FilterType = Enum.RaycastFilterType.Exclude
+	self.RayP.IgnoreWater = true
 	
-	self.lastShot = 0
-	self.FIRE_RATE = 1.3
-	self.ping = 0
-	self.lastPingUpdate = 0
-	self.activePlayers = {}
-	self.lastPlayerListUpdate = 0
-	
-	self.BODY_PART_MULTIPLIERS = {
-		["Head"] = 4.0,
-		["UpperTorso"] = 1.0,
-		["LowerTorso"] = 1.0,
-		["Torso"] = 1.0,
-		["HumanoidRootPart"] = 1.0,
-		["LeftUpperArm"] = 0.75,
-		["LeftLowerArm"] = 0.75,
-		["LeftHand"] = 0.75,
-		["RightUpperArm"] = 0.75,
-		["RightLowerArm"] = 0.75,
-		["RightHand"] = 0.75,
-		["LeftUpperLeg"] = 0.6,
-		["LeftLowerLeg"] = 0.6,
-		["LeftFoot"] = 0.6,
-		["RightUpperLeg"] = 0.6,
-		["RightLowerLeg"] = 0.6,
-		["RightFoot"] = 0.6,
-		["Left Leg"] = 0.6,
-		["Right Leg"] = 0.6,
-	}
-	
-	self.MIN_DAMAGE_PRIORITY = {
-		{name = "Legs", parts = {"LeftUpperLeg", "RightUpperLeg", "LeftLowerLeg", "RightLowerLeg", "Left Leg", "Right Leg"}},
-		{name = "Arms", parts = {"LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm", "LeftHand", "RightHand", "Left Arm", "Right Arm"}},
-		{name = "Body", parts = {"UpperTorso", "LowerTorso", "Torso", "HumanoidRootPart"}},
-		{name = "Head", parts = {"Head"}},
-	}
+	self.PLAYER_CACHE_INTERVAL = 0.4
+	self.frame = 0
 	
 	return self
 end
 
-function RageModule:IsAlive()
-	local char = self.player.Character
-	if not char then return false end
-	local hum = char:FindFirstChild("Humanoid")
-	return hum and hum.Health > 0
-end
-
-function RageModule:IsEnemy(target)
-	if self.player.Team and target.Team then
-		return self.player.Team ~= target.Team
+function RageModule:CacheChar()
+	self.myChar = self.player.Character
+	if self.myChar then
+		self.myHRP = self.myChar:FindFirstChild("HumanoidRootPart")
+		self.myHead = self.myChar:FindFirstChild("Head")
+	else
+		self.myHRP = nil
+		self.myHead = nil
 	end
-	return true
-end
-
-function RageModule:IsGrounded()
-	local char = self.player.Character
-	if not char then return false end
-	
-	local hum = char:FindFirstChild("Humanoid")
-	if not hum then return false end
-	
-	if hum.FloorMaterial ~= Enum.Material.Air then
-		return true
-	end
-	
-	local hrp = char:FindFirstChild("HumanoidRootPart")
-	if not hrp then return false end
-	
-	local params = RaycastParams.new()
-	params.FilterDescendantsInstances = {char}
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	
-	local result = self.Workspace:Raycast(hrp.Position, Vector3.new(0, -3.5, 0), params)
-	return result ~= nil
 end
 
 function RageModule:GetFireShot()
-	local char = self.player.Character
-	if not char then return nil end
+	local now = tick()
+	if self.fireShot and self.fireShot.Parent and now - self.fireShotTime < 5 then
+		return self.fireShot
+	end
+	if not self.myChar then return nil end
 	
-	for _, tool in pairs(char:GetChildren()) do
-		if tool:IsA("Tool") then
-			local remotes = tool:FindFirstChild("Remotes")
+	for _, child in ipairs(self.myChar:GetChildren()) do
+		if child:IsA("Tool") then
+			local remotes = child:FindFirstChild("Remotes")
 			if remotes then
-				local fireShot = remotes:FindFirstChild("FireShot") or remotes:FindFirstChild("fireShot")
-				if fireShot then
-					return fireShot
+				local fs = remotes:FindFirstChild("FireShot") or remotes:FindFirstChild("fireShot")
+				if fs then
+					self.fireShot = fs
+					self.fireShotTime = now
+					return fs
 				end
 			end
 		end
 	end
-	
 	return nil
 end
 
-function RageModule:CanBulletPassThrough(part)
-	if not part or not part:IsA("BasePart") then
-		return false
-	end
+function RageModule:UpdatePlayerData()
+	local now = tick()
+	if now - self.playerDataTime < self.PLAYER_CACHE_INTERVAL then return end
+	self.playerDataTime = now
 	
-	if part:IsA("WedgePart") then
-		return true
-	end
+	table.clear(self.playerData)
 	
-	local name = part.Name:lower()
-	if name:find("hamik") or name:find("paletka") then
-		return true
-	end
+	if not self.myHRP then return end
+	local myPos = self.myHRP.Position
+	local myTeam = self.player.Team
+	local myColor = self.player.TeamColor
+	local count = 0
 	
-	if part.Parent then
-		local parentName = part.Parent.Name:lower()
-		if parentName:find("hamik") or parentName:find("paletka") then
-			return true
-		end
-	end
-	
-	if part.Transparency > 0.2 then
-		return true
-	end
-	
-	if not part.CanCollide then
-		return true
-	end
-	
-	return false
-end
-
-function RageModule:IsPartOfCharacter(part)
-	if not part or not part:IsA("BasePart") then
-		return false
-	end
-	
-	local parent = part.Parent
-	if not parent then
-		return false
-	end
-	
-	if parent:FindFirstChild("Humanoid") then
-		return true
-	end
-	
-	if parent:IsA("Accessory") or parent:IsA("Hat") then
-		return true
-	end
-	
-	return false
-end
-
-function RageModule:StrictWallCheck(origin, targetPos, myChar, targetChar)
-	if not origin or not targetPos then
-		return false
-	end
-	
-	local direction = targetPos - origin
-	local distance = direction.Magnitude
-	
-	if distance < 0.1 or distance > 1000 then
-		return false
-	end
-	
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = {myChar, targetChar}
-	params.IgnoreWater = true
-	
-	local result = self.Workspace:Raycast(origin, direction, params)
-	
-	if not result then
-		return true
-	end
-	
-	local hitPart = result.Instance
-	
-	if hitPart:IsDescendantOf(targetChar) then
-		return true
-	end
-	
-	if self:CanBulletPassThrough(hitPart) or self:IsPartOfCharacter(hitPart) then
-		local newOrigin = result.Position + direction.Unit * 0.1
-		local newDirection = targetPos - newOrigin
-		
-		if newDirection.Magnitude < 0.1 then
-			return true
-		end
-		
-		params.FilterDescendantsInstances = {myChar, targetChar, hitPart}
-		local result2 = self.Workspace:Raycast(newOrigin, newDirection, params)
-		
-		if not result2 then
-			return true
-		end
-		
-		if result2.Instance:IsDescendantOf(targetChar) then
-			return true
-		end
-		
-		return false
-	end
-	
-	return false
-end
-
-function RageModule:MultiPointWallCheck(origin, targetPos, myChar, targetChar)
-	if not origin or not targetPos or not myChar or not targetChar then
-		return false
-	end
-	
-	if self:StrictWallCheck(origin, targetPos, myChar, targetChar) then
-		return true
-	end
-	
-	for _, offset in ipairs({Vector3.new(0, 0.3, 0), Vector3.new(0, -0.3, 0)}) do
-		if self:StrictWallCheck(origin, targetPos + offset, myChar, targetChar) then
-			return true
-		end
-	end
-	
-	return false
-end
-
-function RageModule:PredictPosition(part, rootPart)
-	if not self.PREDICTION_ENABLED or not rootPart then
-		return part.Position
-	end
-	
-	local velocity = rootPart.AssemblyLinearVelocity or Vector3.new()
-	
-	if velocity.Magnitude < 1 then
-		return part.Position
-	end
-	
-	local horizontalVelocity = Vector3.new(velocity.X, 0, velocity.Z)
-	local ping = self.player:GetNetworkPing()
-	
-	return part.Position + horizontalVelocity * ping * self.PREDICTION_STRENGTH
-end
-
-function RageModule:CalculatePotentialDamage(partName, distance)
-	local multiplier = self.BODY_PART_MULTIPLIERS[partName] or 0.5
-	local damage = self.BASE_DAMAGE * multiplier
-	
-	if distance > 300 then
-		damage = damage * 0.3
-	elseif distance > 200 then
-		damage = damage * 0.5
-	elseif distance > 100 then
-		damage = damage * 0.8
-	end
-	
-	return math.floor(damage)
-end
-
-function RageModule:CheckMinDamage(part, distance)
-	if self.MIN_DAMAGE_VALUE <= 0 then
-		return true
-	end
-	
-	local damage = self:CalculatePotentialDamage(part.Name, distance)
-	return damage >= self.MIN_DAMAGE_VALUE
-end
-
-function RageModule:CheckHitchance()
-	if not self.RAGE_HITCHANCE_ENABLED then
-		return true
-	end
-	
-	if self.RAGE_HITCHANCE <= 0 then
-		return false
-	end
-	
-	if self.RAGE_HITCHANCE >= 100 then
-		return true
-	end
-	
-	return math.random(1, 100) <= self.RAGE_HITCHANCE
-end
-
-function RageModule:UpdateActivePlayersList()
-	table.clear(self.activePlayers)
-	
-	for _, targetPlayer in ipairs(self.Players:GetPlayers()) do
-		if targetPlayer ~= self.player and self:IsEnemy(targetPlayer) then
-			local targetChar = targetPlayer.Character
-			if targetChar then
-				local hum = targetChar:FindFirstChild("Humanoid")
-				local rootPart = targetChar:FindFirstChild("HumanoidRootPart")
-				if hum and hum.Health > 0 and rootPart then
-					table.insert(self.activePlayers, {
-						player = targetPlayer,
-						character = targetChar,
-						humanoid = hum,
-						rootPart = rootPart
-					})
+	for _, p in ipairs(self.Players:GetPlayers()) do
+		if p ~= self.player then
+			local c = p.Character
+			if c then
+				local h = c:FindFirstChild("Humanoid")
+				local r = c:FindFirstChild("HumanoidRootPart")
+				if h and h.Health > 0 and r then
+					local dist = (myPos - r.Position).Magnitude
+					if dist < 600 then
+						count = count + 1
+						local isTeam = myTeam and (p.Team == myTeam or p.TeamColor == myColor)
+						self.playerData[count] = {
+							p = p,
+							c = c,
+							h = h,
+							r = r,
+							head = c:FindFirstChild("Head"),
+							torso = c:FindFirstChild("UpperTorso") or c:FindFirstChild("Torso"),
+							dist = dist,
+							team = isTeam
+						}
+					end
 				end
+			end
+		end
+	end
+	
+	for i = 1, count - 1 do
+		for j = i + 1, count do
+			if self.playerData[j] and self.playerData[i] and self.playerData[j].dist < self.playerData[i].dist then
+				self.playerData[i], self.playerData[j] = self.playerData[j], self.playerData[i]
 			end
 		end
 	end
 end
 
-function RageModule:GetTargetParts(char)
-	local parts = {}
+function RageModule:MainLoop()
+	self.frame = self.frame + 1
 	
-	if self.RAGE_HITPART == "Head" then
-		local head = char:FindFirstChild("Head")
-		if head then table.insert(parts, head) end
-	elseif self.RAGE_HITPART == "Body" then
-		for _, name in ipairs({"UpperTorso", "LowerTorso", "Torso", "HumanoidRootPart"}) do
-			local part = char:FindFirstChild(name)
-			if part then table.insert(parts, part) end
-		end
-	elseif self.RAGE_HITPART == "Arms" then
-		for _, name in ipairs({"RightUpperArm", "LeftUpperArm", "Right Arm", "Left Arm"}) do
-			local part = char:FindFirstChild(name)
-			if part then table.insert(parts, part) end
-		end
-	elseif self.RAGE_HITPART == "Legs" then
-		for _, name in ipairs({"RightUpperLeg", "LeftUpperLeg", "Right Leg", "Left Leg"}) do
-			local part = char:FindFirstChild(name)
-			if part then table.insert(parts, part) end
-		end
+	if self.frame % 15 == 0 then
+		self:CacheChar()
 	end
 	
-	return parts
-end
-
-function RageModule:FindBestTarget()
-	if not self:IsAlive() then return nil end
+	if not self.myChar or not self.myHRP then return end
 	
-	local char = self.player.Character
-	local myHead = char and char:FindFirstChild("Head")
-	if not myHead then return nil end
+	self:UpdatePlayerData()
 	
 	local now = tick()
-	if now - self.lastPlayerListUpdate >= 0.5 then
-		self.lastPlayerListUpdate = now
-		self:UpdateActivePlayersList()
-	end
+	local head = self.myHead
 	
-	if #self.activePlayers == 0 then
-		return nil
-	end
-	
-	local bestTarget = nil
-	local bestDist = self.MAX_DISTANCE
-	
-	for _, data in ipairs(self.activePlayers) do
-		if not data.humanoid or data.humanoid.Health <= 0 then
-			continue
-		end
-		
-		if not data.rootPart or not data.rootPart.Parent then
-			continue
-		end
-		
-		local dist = (data.rootPart.Position - myHead.Position).Magnitude
-		if dist > bestDist then
-			continue
-		end
-		
-		local targetParts = self:GetTargetParts(data.character)
-		local validPart = nil
-		
-		if self.MIN_DAMAGE_ENABLED then
-			for _, group in ipairs(self.MIN_DAMAGE_PRIORITY) do
-				for _, partName in ipairs(group.parts) do
-					local part = data.character:FindFirstChild(partName)
-					if part and self:CheckMinDamage(part, dist) then
-						if self:MultiPointWallCheck(myHead.Position, part.Position, char, data.character) then
-							validPart = part
+	if self.rbEnabled and self.rbAutoFire and self.frame % 3 == 0 and head then
+		if now - self.rbLast >= self.rbFireRate then
+			self.RayP.FilterDescendantsInstances = {self.myChar}
+			local best = nil
+			
+			for i = 1, 4 do
+				local d = self.playerData[i]
+				if d and (not self.rbTeamCheck or not d.team) and d.dist < self.rbMaxDist then
+					if self.rbNoAir then
+						local enemyPos = d.r.Position
+						local groundRay = self.Workspace:Raycast(enemyPos, Vector3.new(0, -4, 0), self.RayP)
+						local isInAir = groundRay == nil
+						
+						local enemyVelY = d.r.AssemblyLinearVelocity.Y
+						if isInAir or math.abs(enemyVelY) > 8 then
+							continue
+						end
+					end
+					
+					local tgt = self.rbHitbox == "Head" and d.head or d.torso or d.r
+					if tgt then
+						local dir = tgt.Position - head.Position
+						local res = self.Workspace:Raycast(head.Position, dir, self.RayP)
+						
+						if self.rbWallCheck then
+							if res and not res.Instance:IsDescendantOf(d.c) then
+								continue
+							end
+						end
+						
+						if not res or res.Instance:IsDescendantOf(d.c) then
+							best = d
 							break
 						end
 					end
 				end
-				if validPart then break end
 			end
-		else
-			for _, part in ipairs(targetParts) do
-				if self:MultiPointWallCheck(myHead.Position, part.Position, char, data.character) then
-					validPart = part
-					break
+			
+			if best then
+				local fs = self:GetFireShot()
+				if fs then
+					local tgt = self.rbHitbox == "Head" and best.head or best.torso or best.r
+					local vel = best.r.AssemblyLinearVelocity
+					local pos = tgt.Position
+					if vel.Magnitude > 1 then
+						pos = pos + Vector3.new(vel.X, 0, vel.Z) * self.player:GetNetworkPing() * self.rbPredMulti
+					end
+					pcall(fs.FireServer, fs, head.Position, (pos - head.Position).Unit, tgt)
+					self.rbLast = now
 				end
 			end
 		end
-		
-		if validPart then
-			bestDist = dist
-			bestTarget = {
-				player = data.player,
-				character = data.character,
-				targetPart = validPart,
-				rootPart = data.rootPart,
-				distance = dist
-			}
-		end
 	end
-	
-	return bestTarget
 end
 
 function RageModule:Start()
+	self:CacheChar()
+	
+	self.player.CharacterAdded:Connect(function()
+		self:CacheChar()
+		self.fireShot = nil
+		self.playerData = {}
+		self.playerDataTime = 0
+		self.fireShotTime = 0
+	end)
+	
 	self.RunService.Heartbeat:Connect(function()
-		if not self.RAGE_ENABLED then return end
-		if not self:IsAlive() then return end
-		
-		if not self:IsGrounded() and not self.RAGE_NOSPREAD then
-			return
-		end
-		
-		if not self.RAGE_AUTOSHOOT then
-			return
-		end
-		
-		local currentTime = tick()
-		if currentTime - self.lastShot < self.FIRE_RATE then
-			return
-		end
-		
-		if currentTime - self.lastPingUpdate >= 1 then
-			self.lastPingUpdate = currentTime
-			self.ping = self.player:GetNetworkPing() * 1000
-		end
-		
-		local fireShot = self:GetFireShot()
-		if not fireShot then return end
-		
-		local target = self:FindBestTarget()
-		if not target then return end
-		
-		if not self:CheckHitchance() then
-			return
-		end
-		
-		local char = self.player.Character
-		local head = char and char:FindFirstChild("Head")
-		if not head then return end
-		
-		local targetPos = self:PredictPosition(target.targetPart, target.rootPart)
-		local origin = head.Position
-		local direction = (targetPos - origin).Unit
-		
-		local success = pcall(fireShot.FireServer, fireShot, origin, direction, target.targetPart)
-		
-		if success then
-			self.lastShot = currentTime
+		if self.rbEnabled then
+			self:MainLoop()
 		end
 	end)
 end
 
 function RageModule:SetEnabled(value)
-	self.RAGE_ENABLED = value
+	self.rbEnabled = value
 end
 
-function RageModule:SetHitpart(value)
-	self.RAGE_HITPART = value
+function RageModule:SetAutoFire(value)
+	self.rbAutoFire = value
 end
 
-function RageModule:SetHitchance(value)
-	self.RAGE_HITCHANCE = value
+function RageModule:SetHitbox(value)
+	self.rbHitbox = value
 end
 
-function RageModule:SetHitchanceEnabled(value)
-	self.RAGE_HITCHANCE_ENABLED = value
+function RageModule:SetMaxDist(value)
+	self.rbMaxDist = value
 end
 
-function RageModule:SetAutoShoot(value)
-	self.RAGE_AUTOSHOOT = value
+function RageModule:SetFireRate(value)
+	self.rbFireRate = value / 1000
 end
 
-function RageModule:SetNoSpread(value)
-	self.RAGE_NOSPREAD = value
+function RageModule:SetPredMulti(value)
+	self.rbPredMulti = value
 end
 
-function RageModule:SetMaxDistance(value)
-	self.MAX_DISTANCE = value
+function RageModule:SetNoAir(value)
+	self.rbNoAir = value
 end
 
-function RageModule:SetPredictionEnabled(value)
-	self.PREDICTION_ENABLED = value
+function RageModule:SetWallCheck(value)
+	self.rbWallCheck = value
 end
 
-function RageModule:SetPredictionStrength(value)
-	self.PREDICTION_STRENGTH = value
-end
-
-function RageModule:SetMinDamageEnabled(value)
-	self.MIN_DAMAGE_ENABLED = value
-end
-
-function RageModule:SetMinDamageValue(value)
-	self.MIN_DAMAGE_VALUE = value
+function RageModule:SetTeamCheck(value)
+	self.rbTeamCheck = value
 end
 
 return RageModule
