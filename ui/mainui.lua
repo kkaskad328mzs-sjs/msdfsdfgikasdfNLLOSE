@@ -2,9 +2,9 @@ local lib = {}
 lib.runtime = {gui=nil,main=nil,drag=false,dragStart=nil,startPos=nil,conns={},sliderDrag=nil}
 lib.theme = {
     main=Color3.fromRGB(17,17,17),group=Color3.fromRGB(22,22,22),stroke=Color3.fromRGB(35,35,35),
-    accent=Color3.fromRGB(100,255,150),text=Color3.fromRGB(255,255,255),dim=Color3.fromRGB(150,150,150),
+    accent=Color3.fromRGB(80,200,120),text=Color3.fromRGB(255,255,255),dim=Color3.fromRGB(150,150,150),
     font=Enum.Font.Gotham,dark=Color3.fromRGB(20,20,20),darker=Color3.fromRGB(15,15,15),border=Color3.fromRGB(40,40,40),
-    accentDark=Color3.fromRGB(60,200,110),tabActive=Color3.fromRGB(25,25,25)
+    accentDark=Color3.fromRGB(50,160,90),tabActive=Color3.fromRGB(25,25,25)
 }
 local t=lib.theme
 local r=lib.runtime
@@ -22,31 +22,42 @@ function lib:create(title)
     
     local w=Instance.new("Frame")
     w.Name="M"
-    w.Size=UDim2.new(0,620,0,450)
-    w.Position=UDim2.new(0.5,-310,0.5,-225)
+    w.Size=UDim2.new(0,580,0,420)
+    w.Position=UDim2.new(0.5,-290,0.5,-210)
     w.BackgroundColor3=t.main
     w.BorderSizePixel=0
     w.Parent=r.gui
     r.main=w
     
+    local wCorner=Instance.new("UICorner")
+    wCorner.CornerRadius=UDim.new(0,8)
+    wCorner.Parent=w
+    
     local s=Instance.new("UIStroke")
     s.Color=t.border
+    s.Thickness=1
     s.Parent=w
     
     local gl=Instance.new("Frame")
-    gl.Size=UDim2.new(1,0,0,3)
+    gl.Size=UDim2.new(1,0,0,2)
     gl.Position=UDim2.new(0,0,0,0)
     gl.BorderSizePixel=0
     gl.BackgroundColor3=t.accent
     gl.Parent=w
     
+    local glCorner=Instance.new("UICorner")
+    glCorner.CornerRadius=UDim.new(0,8)
+    glCorner.Parent=gl
+    
     local ug=Instance.new("UIGradient")
     ug.Color=ColorSequence.new({
-        ColorSequenceKeypoint.new(0,Color3.fromRGB(50,255,100)),
-        ColorSequenceKeypoint.new(0.25,Color3.fromRGB(100,255,150)),
-        ColorSequenceKeypoint.new(0.5,Color3.fromRGB(150,255,100)),
-        ColorSequenceKeypoint.new(0.75,Color3.fromRGB(100,255,200)),
-        ColorSequenceKeypoint.new(1,Color3.fromRGB(50,255,150))
+        ColorSequenceKeypoint.new(0,Color3.fromRGB(255,50,50)),
+        ColorSequenceKeypoint.new(0.17,Color3.fromRGB(255,150,50)),
+        ColorSequenceKeypoint.new(0.33,Color3.fromRGB(255,255,50)),
+        ColorSequenceKeypoint.new(0.5,Color3.fromRGB(50,255,50)),
+        ColorSequenceKeypoint.new(0.67,Color3.fromRGB(50,150,255)),
+        ColorSequenceKeypoint.new(0.83,Color3.fromRGB(150,50,255)),
+        ColorSequenceKeypoint.new(1,Color3.fromRGB(255,50,150))
     })
     ug.Parent=gl
     
@@ -71,14 +82,14 @@ function lib:create(title)
     tl.Parent=w
     
     local tc=Instance.new("Frame")
-    tc.Size=UDim2.new(1,-20,0,32)
-    tc.Position=UDim2.new(0,10,0,40)
-    tc.BackgroundColor3=t.dark
+    tc.Size=UDim2.new(1,-20,0,30)
+    tc.Position=UDim2.new(0,10,0,38)
+    tc.BackgroundColor3=t.darker
     tc.BorderSizePixel=0
     tc.Parent=w
     
     local tcCorner=Instance.new("UICorner")
-    tcCorner.CornerRadius=UDim.new(0,6)
+    tcCorner.CornerRadius=UDim.new(0,5)
     tcCorner.Parent=tc
     
     local tcStroke=Instance.new("UIStroke")
@@ -90,19 +101,19 @@ function lib:create(title)
     tlay.FillDirection=Enum.FillDirection.Horizontal
     tlay.HorizontalAlignment=Enum.HorizontalAlignment.Center
     tlay.VerticalAlignment=Enum.VerticalAlignment.Center
-    tlay.Padding=UDim.new(0,6)
+    tlay.Padding=UDim.new(0,5)
     tlay.Parent=tc
     
     local tcPadding=Instance.new("UIPadding")
-    tcPadding.PaddingLeft=UDim.new(0,6)
-    tcPadding.PaddingRight=UDim.new(0,6)
-    tcPadding.PaddingTop=UDim.new(0,4)
-    tcPadding.PaddingBottom=UDim.new(0,4)
+    tcPadding.PaddingLeft=UDim.new(0,5)
+    tcPadding.PaddingRight=UDim.new(0,5)
+    tcPadding.PaddingTop=UDim.new(0,3)
+    tcPadding.PaddingBottom=UDim.new(0,3)
     tcPadding.Parent=tc
     
     local pc=Instance.new("Frame")
-    pc.Size=UDim2.new(1,-20,1,-88)
-    pc.Position=UDim2.new(0,10,0,80)
+    pc.Size=UDim2.new(1,-20,1,-84)
+    pc.Position=UDim2.new(0,10,0,76)
     pc.BackgroundTransparency=1
     pc.Parent=w
     
@@ -143,12 +154,12 @@ function lib:create(title)
     function tabs:newtab(name)
         local btn=Instance.new("TextButton")
         btn.Text=name:upper()
-        btn.Size=UDim2.new(0,90,1,-4)
-        btn.BackgroundColor3=t.darker
-        btn.BackgroundTransparency=0
+        btn.Size=UDim2.new(0,85,1,0)
+        btn.BackgroundColor3=Color3.fromRGB(0,0,0)
+        btn.BackgroundTransparency=1
         btn.BorderSizePixel=0
         btn.Font=Enum.Font.GothamBold
-        btn.TextSize=11
+        btn.TextSize=10
         btn.TextColor3=t.dim
         btn.Parent=tc
         
@@ -156,11 +167,17 @@ function lib:create(title)
         btnCorner.CornerRadius=UDim.new(0,4)
         btnCorner.Parent=btn
         
-        local btnStroke=Instance.new("UIStroke")
-        btnStroke.Color=t.stroke
-        btnStroke.Thickness=1
-        btnStroke.Transparency=1
-        btnStroke.Parent=btn
+        local indicator=Instance.new("Frame")
+        indicator.Size=UDim2.new(1,-4,0,2)
+        indicator.Position=UDim2.new(0,2,1,-2)
+        indicator.BackgroundColor3=t.accent
+        indicator.BorderSizePixel=0
+        indicator.Visible=false
+        indicator.Parent=btn
+        
+        local indCorner=Instance.new("UICorner")
+        indCorner.CornerRadius=UDim.new(1,0)
+        indCorner.Parent=indicator
         
         local page=Instance.new("ScrollingFrame")
         page.Size=UDim2.new(1,0,1,0)
@@ -198,25 +215,24 @@ function lib:create(title)
             for _,tb in ipairs(tc:GetChildren()) do
                 if tb:IsA("TextButton") then 
                     tb.TextColor3=t.dim
-                    tb.BackgroundColor3=t.darker
-                    tb.BackgroundTransparency=0
-                    local stroke=tb:FindFirstChildOfClass("UIStroke")
-                    if stroke then stroke.Transparency=1 end
+                    tb.BackgroundTransparency=1
+                    local ind=tb:FindFirstChild("Frame")
+                    if ind then ind.Visible=false end
                 end
             end
             page.Visible=true
             btn.TextColor3=t.accent
-            btn.BackgroundColor3=t.dark
-            btnStroke.Transparency=0
-            btnStroke.Color=t.accent
+            btn.BackgroundTransparency=0.95
+            btn.BackgroundColor3=t.accent
+            indicator.Visible=true
         end)
         
         if #tc:GetChildren()==5 then
             page.Visible=true
             btn.TextColor3=t.accent
-            btn.BackgroundColor3=t.dark
-            btnStroke.Transparency=0
-            btnStroke.Color=t.accent
+            btn.BackgroundTransparency=0.95
+            btn.BackgroundColor3=t.accent
+            indicator.Visible=true
         end
         
         local tl={}
@@ -264,28 +280,33 @@ function lib:create(title)
             local g={}
             function g:toggle(text,def,cb)
                 local f=Instance.new("Frame")
-                f.Size=UDim2.new(1,0,0,20)
+                f.Size=UDim2.new(1,0,0,18)
                 f.BackgroundTransparency=1
                 f.Parent=cnt
                 
                 local box=Instance.new("Frame")
-                box.Size=UDim2.new(0,16,0,16)
+                box.Size=UDim2.new(0,14,0,14)
                 box.Position=UDim2.new(0,0,0,2)
                 box.BackgroundColor3=t.dark
                 box.Parent=f
+                
+                local boxCorner=Instance.new("UICorner")
+                boxCorner.CornerRadius=UDim.new(0,3)
+                boxCorner.Parent=box
+                
                 local bs=Instance.new("UIStroke")
                 bs.Color=t.stroke
                 bs.Parent=box
                 
                 local lbl=Instance.new("TextLabel")
                 lbl.Text=text
-                lbl.Size=UDim2.new(1,-25,1,0)
-                lbl.Position=UDim2.new(0,25,0,0)
+                lbl.Size=UDim2.new(1,-20,1,0)
+                lbl.Position=UDim2.new(0,20,0,0)
                 lbl.BackgroundTransparency=1
                 lbl.TextXAlignment=Enum.TextXAlignment.Left
                 lbl.TextColor3=t.dim
                 lbl.Font=t.font
-                lbl.TextSize=13
+                lbl.TextSize=12
                 lbl.Parent=f
                 
                 local b=Instance.new("TextButton")
@@ -297,6 +318,7 @@ function lib:create(title)
                 local en=def
                 local function upd()
                     box.BackgroundColor3=en and t.accent or t.dark
+                    bs.Color=en and t.accent or t.stroke
                     lbl.TextColor3=en and t.text or t.dim
                     if cb then cb(en) end
                 end
