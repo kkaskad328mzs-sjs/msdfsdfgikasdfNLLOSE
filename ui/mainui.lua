@@ -63,10 +63,10 @@ function lib:create(title)
     ug.Parent=gl
     
     task.spawn(function()
-        local hue=0
+        local offset=0
         while gl and gl.Parent do
-            hue=(hue+0.001)%1
-            ug.Offset=Vector2.new(-hue,0)
+            offset=(offset+0.003)%2
+            ug.Offset=Vector2.new(offset-1,0)
             task.wait()
         end
     end)
@@ -115,17 +115,15 @@ function lib:create(title)
     tl.Parent=w
     
     local resizer=Instance.new("ImageLabel")
-    resizer.Size=UDim2.new(0,16,0,16)
-    resizer.Position=UDim2.new(1,-18,1,-18)
+    resizer.Size=UDim2.new(0,12,0,12)
+    resizer.Position=UDim2.new(1,-14,1,-14)
     resizer.BackgroundTransparency=1
-    resizer.Image="rbxasset://textures/ui/GuiImagePlaceholder.png"
-    resizer.ImageColor3=t.dim
-    resizer.ImageTransparency=0.5
+    resizer.ImageTransparency=1
     resizer.Parent=w
     
     local resizerBtn=Instance.new("TextButton")
-    resizerBtn.Size=UDim2.new(0,20,0,20)
-    resizerBtn.Position=UDim2.new(1,-20,1,-20)
+    resizerBtn.Size=UDim2.new(0,16,0,16)
+    resizerBtn.Position=UDim2.new(1,-16,1,-16)
     resizerBtn.BackgroundTransparency=1
     resizerBtn.Text=""
     resizerBtn.Parent=w
@@ -363,7 +361,7 @@ function lib:create(title)
             pd.Parent=brd
             
             local g={}
-            function g:toggle(text,def,cb)
+            function g:toggle(text,def,cb,keybind)
                 local f=Instance.new("Frame")
                 f.Size=UDim2.new(1,0,0,18)
                 f.BackgroundTransparency=1
@@ -394,10 +392,51 @@ function lib:create(title)
                 lbl.TextSize=12
                 lbl.Parent=f
                 
+                local bindBtn
+                if keybind then
+                    lbl.Size=UDim2.new(1,-80,1,0)
+                    
+                    bindBtn=Instance.new("TextButton")
+                    bindBtn.Size=UDim2.new(0,50,0,16)
+                    bindBtn.Position=UDim2.new(1,-52,0,1)
+                    bindBtn.BackgroundColor3=t.dark
+                    bindBtn.BorderSizePixel=0
+                    bindBtn.Text="["..keybind.Name.."]"
+                    bindBtn.TextColor3=t.dim
+                    bindBtn.Font=t.font
+                    bindBtn.TextSize=9
+                    bindBtn.Parent=f
+                    
+                    local bCorner=Instance.new("UICorner")
+                    bCorner.CornerRadius=UDim.new(0,3)
+                    bCorner.Parent=bindBtn
+                    
+                    local bStroke=Instance.new("UIStroke")
+                    bStroke.Color=t.stroke
+                    bStroke.Thickness=1
+                    bStroke.Parent=bindBtn
+                    
+                    local waiting=false
+                    bindBtn.MouseButton1Click:Connect(function()
+                        waiting=true
+                        bindBtn.Text="[...]"
+                        bindBtn.TextColor3=t.accent
+                    end)
+                    
+                    table.insert(r.conns,uis.InputBegan:Connect(function(i)
+                        if waiting and i.UserInputType==Enum.UserInputType.Keyboard then
+                            waiting=false
+                            bindBtn.Text="["..i.KeyCode.Name.."]"
+                            bindBtn.TextColor3=t.dim
+                        end
+                    end))
+                end
+                
                 local b=Instance.new("TextButton")
                 b.Size=UDim2.new(1,0,1,0)
                 b.BackgroundTransparency=1
                 b.Text=""
+                b.ZIndex=2
                 b.Parent=f
                 
                 local en=def
@@ -546,7 +585,7 @@ function lib:create(title)
                 popCorner.Parent=popup
                 
                 local popStroke=Instance.new("UIStroke")
-                popStroke.Color=t.accent
+                popStroke.Color=t.stroke
                 popStroke.Thickness=1
                 popStroke.Parent=popup
                 
@@ -583,8 +622,8 @@ function lib:create(title)
                     ob.MouseButton1Click:Connect(function()
                         cur=opt
                         box.Text=opt.." ▼"
-                        ts:Create(popup,TweenInfo.new(0.2,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.new(0,0,0,0)}):Play()
-                        task.wait(0.2)
+                        ts:Create(popup,TweenInfo.new(0.15,Enum.EasingStyle.Quad,Enum.EasingDirection.In),{Size=UDim2.new(0,box.AbsoluteSize.X,0,0)}):Play()
+                        task.wait(0.15)
                         popup.Visible=false
                         open=false
                         for _,b in ipairs(scroll:GetChildren()) do
@@ -605,10 +644,10 @@ function lib:create(title)
                         popup.Position=UDim2.new(0,absPos.X,0,absPos.Y+20)
                         popup.Size=UDim2.new(0,0,0,0)
                         popup.Visible=true
-                        ts:Create(popup,TweenInfo.new(0.2,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.new(0,box.AbsoluteSize.X,0,targetH)}):Play()
+                        ts:Create(popup,TweenInfo.new(0.15,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.new(0,box.AbsoluteSize.X,0,targetH)}):Play()
                     else
-                        ts:Create(popup,TweenInfo.new(0.2,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.new(0,0,0,0)}):Play()
-                        task.wait(0.2)
+                        ts:Create(popup,TweenInfo.new(0.15,Enum.EasingStyle.Quad,Enum.EasingDirection.In),{Size=UDim2.new(0,box.AbsoluteSize.X,0,0)}):Play()
+                        task.wait(0.15)
                         popup.Visible=false
                     end
                 end)
