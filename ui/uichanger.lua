@@ -4,6 +4,7 @@ local uis = game:GetService("UserInputService")
 
 local settingsFrame = nil
 local settingsOpen = false
+local savedPosition = nil
 local theme = {
     main=Color3.fromRGB(17,17,17),
     darker=Color3.fromRGB(15,15,15),
@@ -165,6 +166,7 @@ local function addColorOption(parent, text, def, cb)
                 
                 wheel.InputBegan:Connect(function(i)
                     if i.UserInputType == Enum.UserInputType.MouseButton1 then
+                        local dragging = true
                         local function update()
                             local mp = uis:GetMouseLocation()
                             local center = wheel.AbsolutePosition + wheel.AbsoluteSize / 2
@@ -178,16 +180,19 @@ local function addColorOption(parent, text, def, cb)
                             if cb then cb(newColor) end
                         end
                         update()
-                        local conn
-                        conn = uis.InputChanged:Connect(function(i2)
-                            if i2.UserInputType == Enum.UserInputType.MouseMovement then
+                        
+                        local moveConn
+                        moveConn = uis.InputChanged:Connect(function(i2)
+                            if i2.UserInputType == Enum.UserInputType.MouseMovement and dragging then
                                 update()
                             end
                         end)
+                        
                         local endConn
                         endConn = uis.InputEnded:Connect(function(i2)
                             if i2.UserInputType == Enum.UserInputType.MouseButton1 then
-                                conn:Disconnect()
+                                dragging = false
+                                moveConn:Disconnect()
                                 endConn:Disconnect()
                             end
                         end)
@@ -462,6 +467,60 @@ local function addButtonOption(parent, text, cb)
     end)
 end
 
+local function addToggleOption(parent, text, def, cb)
+    local f = Instance.new("Frame")
+    f.Size = UDim2.new(1, 0, 0, 20)
+    f.BackgroundTransparency = 1
+    f.Parent = parent
+    
+    local box = Instance.new("Frame")
+    box.Size = UDim2.new(0, 14, 0, 14)
+    box.Position = UDim2.new(0, 0, 0, 3)
+    box.BackgroundColor3 = theme.dark
+    box.Parent = f
+    
+    local boxCorner = Instance.new("UICorner")
+    boxCorner.CornerRadius = UDim.new(0, 3)
+    boxCorner.Parent = box
+    
+    local boxStroke = Instance.new("UIStroke")
+    boxStroke.Color = theme.stroke
+    boxStroke.Thickness = 1
+    boxStroke.Parent = box
+    
+    local lbl = Instance.new("TextLabel")
+    lbl.Text = text
+    lbl.Size = UDim2.new(1, -20, 1, 0)
+    lbl.Position = UDim2.new(0, 20, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.TextColor3 = theme.dim
+    lbl.Font = theme.font
+    lbl.TextSize = 11
+    lbl.Parent = f
+    
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 1, 0)
+    btn.BackgroundTransparency = 1
+    btn.Text = ""
+    btn.Parent = f
+    
+    local enabled = def
+    local function update()
+        box.BackgroundColor3 = enabled and theme.accent or theme.dark
+        boxStroke.Color = enabled and theme.accent or theme.stroke
+        lbl.TextColor3 = enabled and theme.text or theme.dim
+    end
+    
+    btn.MouseButton1Click:Connect(function()
+        enabled = not enabled
+        update()
+        if cb then cb(enabled) end
+    end)
+    
+    update()
+end
+
 local function createTab(tabContainer, pageContainer, name, setupFunc)
     local btn = Instance.new("TextButton")
     btn.Text = name
@@ -568,8 +627,12 @@ function UIChanger:createSettingsButton(parent)
     
     clickBtn.MouseButton1Click:Connect(function()
         if settingsOpen then
-            ts:Create(settingsFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {Position = UDim2.new(0.5, -225, 0.3, -175)}):Play()
-            task.wait(0.2)
+            savedPosition = settingsFrame.Position
+            local currentPos = settingsFrame.AbsolutePosition
+            ts:Create(settingsFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+                Position = UDim2.new(0, currentPos.X, 0, -settingsFrame.AbsoluteSize.Y - 50)
+            }):Play()
+            task.wait(0.25)
             settingsFrame.Visible = false
             settingsOpen = false
         else
@@ -615,8 +678,12 @@ function UIChanger:createSettingsButton(parent)
                 closeBtn.Parent = settingsFrame
                 
                 closeBtn.MouseButton1Click:Connect(function()
-                    ts:Create(settingsFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {Position = UDim2.new(0.5, -225, 0.3, -175)}):Play()
-                    task.wait(0.2)
+                    savedPosition = settingsFrame.Position
+                    local currentPos = settingsFrame.AbsolutePosition
+                    ts:Create(settingsFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+                        Position = UDim2.new(0, currentPos.X, 0, -settingsFrame.AbsoluteSize.Y - 50)
+                    }):Play()
+                    task.wait(0.25)
                     settingsFrame.Visible = false
                     settingsOpen = false
                 end)
@@ -717,42 +784,138 @@ function UIChanger:createSettingsButton(parent)
                 pageContainer.Parent = settingsFrame
                 
                 createTab(tabContainer, pageContainer, "THEME", function(page)
-                    addColorOption(page, "Accent Color", UIChanger.settings.accentColor)
-                    addColorOption(page, "Main Background", UIChanger.settings.mainBg)
-                    addColorOption(page, "Secondary Background", UIChanger.settings.secondaryBg)
-                    addColorOption(page, "Dark Background", UIChanger.settings.darkBg)
-                    addColorOption(page, "Stroke Color", UIChanger.settings.strokeColor)
-                    addColorOption(page, "Text Color", UIChanger.settings.textColor)
-                    addColorOption(page, "Dim Text", UIChanger.settings.dimText)
+                    addColorOption(page, "Accent Color", UIChanger.settings.accentColor, function(c)
+                        UIChanger.settings.accentColor = c
+                        theme.accent = c
+                        print("Accent Color changed:", c)
+                    end)
+                    addColorOption(page, "Main Background", UIChanger.settings.mainBg, function(c)
+                        UIChanger.settings.mainBg = c
+                        theme.main = c
+                        print("Main BG changed:", c)
+                    end)
+                    addColorOption(page, "Secondary Background", UIChanger.settings.secondaryBg, function(c)
+                        UIChanger.settings.secondaryBg = c
+                        print("Secondary BG changed:", c)
+                    end)
+                    addColorOption(page, "Dark Background", UIChanger.settings.darkBg, function(c)
+                        UIChanger.settings.darkBg = c
+                        theme.dark = c
+                        print("Dark BG changed:", c)
+                    end)
+                    addColorOption(page, "Stroke Color", UIChanger.settings.strokeColor, function(c)
+                        UIChanger.settings.strokeColor = c
+                        theme.stroke = c
+                        print("Stroke changed:", c)
+                    end)
+                    addColorOption(page, "Text Color", UIChanger.settings.textColor, function(c)
+                        UIChanger.settings.textColor = c
+                        theme.text = c
+                        print("Text Color changed:", c)
+                    end)
+                    addColorOption(page, "Dim Text", UIChanger.settings.dimText, function(c)
+                        UIChanger.settings.dimText = c
+                        theme.dim = c
+                        print("Dim Text changed:", c)
+                    end)
                 end)
                 
                 createTab(tabContainer, pageContainer, "LAYOUT", function(page)
-                    addDropdownOption(page, "Tab Layout", {"horizontal", "vertical"}, UIChanger.settings.tabLayout)
-                    addDropdownOption(page, "Column Count", {"1", "2", "3"}, tostring(UIChanger.settings.columnCount))
+                    addDropdownOption(page, "Tab Layout", {"horizontal", "vertical"}, UIChanger.settings.tabLayout, function(v)
+                        UIChanger.settings.tabLayout = v
+                        print("Tab Layout:", v)
+                    end)
+                    addDropdownOption(page, "Column Count", {"1", "2", "3"}, tostring(UIChanger.settings.columnCount), function(v)
+                        UIChanger.settings.columnCount = tonumber(v)
+                        print("Column Count:", v)
+                    end)
+                    addToggleOption(page, "Show Watermark", true, function(v)
+                        print("Show Watermark:", v)
+                    end)
+                    addToggleOption(page, "Show Hotkeys", true, function(v)
+                        print("Show Hotkeys:", v)
+                    end)
+                    addToggleOption(page, "Show Time", true, function(v)
+                        print("Show Time:", v)
+                    end)
                 end)
                 
                 createTab(tabContainer, pageContainer, "STYLE", function(page)
-                    addSliderOption(page, "Corner Radius", 0, 20, UIChanger.settings.cornerRadius)
-                    addSliderOption(page, "Stroke Thickness", 0, 5, UIChanger.settings.strokeThickness)
-                    addSliderOption(page, "Font Size", 8, 20, UIChanger.settings.fontSize)
-                    addSliderOption(page, "Title Size", 10, 24, UIChanger.settings.titleSize)
+                    addSliderOption(page, "Corner Radius", 0, 20, UIChanger.settings.cornerRadius, function(v)
+                        UIChanger.settings.cornerRadius = v
+                        print("Corner Radius:", v)
+                    end)
+                    addSliderOption(page, "Stroke Thickness", 0, 5, UIChanger.settings.strokeThickness, function(v)
+                        UIChanger.settings.strokeThickness = v
+                        print("Stroke Thickness:", v)
+                    end)
+                    addSliderOption(page, "Font Size", 8, 20, UIChanger.settings.fontSize, function(v)
+                        UIChanger.settings.fontSize = v
+                        print("Font Size:", v)
+                    end)
+                    addSliderOption(page, "Title Size", 10, 24, UIChanger.settings.titleSize, function(v)
+                        UIChanger.settings.titleSize = v
+                        print("Title Size:", v)
+                    end)
                 end)
                 
                 createTab(tabContainer, pageContainer, "BACKGROUND", function(page)
-                    addTextboxOption(page, "Image URL/AssetID", UIChanger.settings.backgroundImage)
-                    addSliderOption(page, "Image Transparency", 0, 100, UIChanger.settings.backgroundTransparency * 100)
+                    addTextboxOption(page, "Image URL/AssetID", UIChanger.settings.backgroundImage, function(v)
+                        UIChanger.settings.backgroundImage = v
+                        print("Background Image:", v)
+                    end)
+                    addSliderOption(page, "Image Transparency", 0, 100, UIChanger.settings.backgroundTransparency * 100, function(v)
+                        UIChanger.settings.backgroundTransparency = v / 100
+                        print("BG Transparency:", v)
+                    end)
                 end)
                 
                 createTab(tabContainer, pageContainer, "ACTIONS", function(page)
-                    addButtonOption(page, "Apply Changes", function() print("Applied!") end)
-                    addButtonOption(page, "Reset to Default", function() print("Reset!") end)
-                    addButtonOption(page, "Export Config", function() print("Exported!") end)
-                    addButtonOption(page, "Import Config", function() print("Imported!") end)
+                    addButtonOption(page, "Apply Changes", function()
+                        print("=== APPLYING SETTINGS ===")
+                        print("Accent:", UIChanger.settings.accentColor)
+                        print("Corner Radius:", UIChanger.settings.cornerRadius)
+                        print("Applied!")
+                    end)
+                    addButtonOption(page, "Reset to Default", function()
+                        UIChanger.settings = {
+                            accentColor = Color3.fromRGB(80,200,120),
+                            mainBg = Color3.fromRGB(17,17,17),
+                            secondaryBg = Color3.fromRGB(22,22,22),
+                            darkBg = Color3.fromRGB(20,20,20),
+                            strokeColor = Color3.fromRGB(35,35,35),
+                            textColor = Color3.fromRGB(255,255,255),
+                            dimText = Color3.fromRGB(150,150,150),
+                            cornerRadius = 8,
+                            strokeThickness = 1,
+                            fontSize = 12,
+                            titleSize = 14,
+                            tabLayout = "horizontal",
+                            columnCount = 2,
+                            backgroundImage = "",
+                            backgroundTransparency = 1
+                        }
+                        print("Reset to default!")
+                    end)
+                    addButtonOption(page, "Export Config", function()
+                        local config = game:GetService("HttpService"):JSONEncode(UIChanger.settings)
+                        print("Exported config:", config)
+                    end)
+                    addButtonOption(page, "Import Config", function()
+                        print("Import config (paste JSON)")
+                    end)
                 end)
             end
-            settingsFrame.Position = UDim2.new(0.5, -225, 0.3, -175)
+            if savedPosition then
+                settingsFrame.Position = savedPosition
+            else
+                settingsFrame.Position = UDim2.new(0.5, -225, 0.5, -175)
+            end
+            local startY = -settingsFrame.AbsoluteSize.Y - 50
+            local targetPos = settingsFrame.Position
+            settingsFrame.Position = UDim2.new(targetPos.X.Scale, targetPos.X.Offset, 0, startY)
             settingsFrame.Visible = true
-            ts:Create(settingsFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2.new(0.5, -225, 0.5, -175)}):Play()
+            ts:Create(settingsFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Position = targetPos}):Play()
             settingsOpen = true
         end
     end)
