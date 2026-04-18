@@ -29,15 +29,17 @@ function RageModule.new(player)
 	self.BASE_DAMAGE = 54
 	
 	self.lastShot = 0
-	self.FIRE_RATE = 0.1
-	self.FIRE_RATE_AWP = 1.3
+	self.FIRE_RATE = 0.05
+	self.FIRE_RATE_AWP = 1.0
 	self.ping = 0
 	self.lastPingUpdate = 0
-	self.PING_UPDATE_RATE = 1
+	self.PING_UPDATE_RATE = 0.5
 	self.activePlayers = {}
 	self.lastPlayerListUpdate = 0
-	self.PLAYER_LIST_UPDATE_RATE = 0.5
+	self.PLAYER_LIST_UPDATE_RATE = 0.3
 	self.autoEquippedOnce = false
+	self.shotAttempts = 0
+	self.maxShotAttempts = 3
 	
 	self.BODY_PART_MULTIPLIERS = {
 		["Head"] = 4.0,
@@ -118,20 +120,26 @@ function RageModule:GetGun()
 			if remotes then
 				local fireShot = remotes:FindFirstChild("FireShot")
 				if fireShot then
-					return {type = "AWP", fireShot = fireShot, fireRate = self.FIRE_RATE_AWP, tool = item}
+					return {type = "AWP", fireShot = fireShot, fireRate = self.FIRE_RATE_AWP, tool = item, name = item.Name}
 				end
 				
 				local castRay = remotes:FindFirstChild("CastRay")
 				if castRay then
 					local hole = item:FindFirstChild("Hole")
-					return {type = "CastRay", castRay = castRay, hole = hole, fireRate = self.FIRE_RATE, tool = item}
+					return {type = "CastRay", castRay = castRay, hole = hole, fireRate = self.FIRE_RATE, tool = item, name = item.Name}
+				end
+				
+				local shootRay = remotes:FindFirstChild("ShootRay")
+				if shootRay then
+					local hole = item:FindFirstChild("Hole") or item:FindFirstChild("Muzzle")
+					return {type = "ShootRay", shootRay = shootRay, hole = hole, fireRate = self.FIRE_RATE, tool = item, name = item.Name}
 				end
 			end
 			
-			local shootEvent = item:FindFirstChild("ShootEvent") or item:FindFirstChild("Fire")
+			local shootEvent = item:FindFirstChild("ShootEvent") or item:FindFirstChild("Fire") or item:FindFirstChild("Shoot")
 			if shootEvent and shootEvent:IsA("RemoteEvent") then
-				local hole = item:FindFirstChild("Hole") or item:FindFirstChild("Muzzle")
-				return {type = "Generic", shootEvent = shootEvent, hole = hole, fireRate = self.FIRE_RATE, tool = item}
+				local hole = item:FindFirstChild("Hole") or item:FindFirstChild("Muzzle") or item:FindFirstChild("FirePoint")
+				return {type = "Generic", shootEvent = shootEvent, hole = hole, fireRate = self.FIRE_RATE, tool = item, name = item.Name}
 			end
 		end
 	end
@@ -257,7 +265,7 @@ function RageModule:IsPartVisible(targetPart, targetChar)
 	local unit = dir.Unit
 	local curOrigin = origin
 	
-	for i = 1, 8 do
+	for i = 1, 5 do
 		local res = self.Workspace:Raycast(curOrigin, targetPos - curOrigin, params)
 		
 		if not res then return true end
@@ -273,17 +281,18 @@ function RageModule:IsPartVisible(targetPart, targetChar)
 			local parent = hit.Parent
 			local parentName = parent and parent.Name:lower() or ""
 			
-			local isWall = name:find("wall") or name:find("barrier") or parentName:find("wall")
-			local isGlass = hit.Transparency > 0.7 or name:find("glass") or name:find("window")
-			local isSoft = hit.CanCollide == false or hit.CanQuery == false
+			local isWall = name:find("wall") or name:find("barrier") or parentName:find("wall") or name:find("brick")
+			local isGlass = hit.Transparency > 0.5 or name:find("glass") or name:find("window")
+			local isSoft = hit.CanCollide == false or hit.CanQuery == false or hit.Transparency > 0.8
+			local isPenetrable = name:find("wood") or name:find("metal") or hit.Material == Enum.Material.Wood
 			
-			if isGlass or isSoft then
-				curOrigin = res.Position + unit * 0.3
+			if isGlass or isSoft or isPenetrable then
+				curOrigin = res.Position + unit * 0.1
 				continue
 			end
 			
-			if not isWall and hit.Transparency > 0.3 then
-				curOrigin = res.Position + unit * 0.2
+			if not isWall and hit.Transparency > 0.2 then
+				curOrigin = res.Position + unit * 0.05
 				continue
 			end
 		end
@@ -298,15 +307,14 @@ function RageModule:PredictPosition(part, rootPart)
 	if not self.PREDICTION_ENABLED or not rootPart then return part.Position end
 	
 	local velocity = rootPart.AssemblyLinearVelocity or rootPart.Velocity or Vector3.new()
-	if velocity.Magnitude < 2 then return part.Position end
+	if velocity.Magnitude < 1 then return part.Position end
 	
-	local horizontalVelocity = Vector3.new(velocity.X, 0, velocity.Z)
 	local distance = (part.Position - self.Workspace.CurrentCamera.CFrame.Position).Magnitude
 	local travelTime = distance / self.BULLET_SPEED
-	local pingTime = self.ping / 2000
-	local dynamicTime = math.clamp(pingTime + travelTime, 0.05, 0.25)
+	local pingTime = self.ping / 1000
+	local dynamicTime = math.clamp(pingTime + travelTime, 0.02, 0.15)
 	
-	local predictedPos = part.Position + (horizontalVelocity * dynamicTime * self.PREDICTION_STRENGTH)
+	local predictedPos = part.Position + (velocity * dynamicTime * self.PREDICTION_STRENGTH)
 	
 	return predictedPos
 end
@@ -482,7 +490,16 @@ function RageModule:Start()
 		end
 		
 		local target = self:FindTarget()
-		if not target then return end
+		if not target then 
+			self.shotAttempts = 0
+			return 
+		end
+		
+		if self.shotAttempts >= self.maxShotAttempts then
+			self.shotAttempts = 0
+			task.wait(0.1)
+			return
+		end
 		
 		if self.RAGE_HITCHANCE_ENABLED and not self.AIRSHOT_ACTIVE then
 			local roll = math.random(1, 100)
@@ -511,6 +528,7 @@ function RageModule:Start()
 			
 			if ok then
 				self.lastShot = currentTime
+				self.shotAttempts = self.shotAttempts + 1
 			end
 			
 		elseif gun.type == "CastRay" then
@@ -521,13 +539,32 @@ function RageModule:Start()
 			if dirVec.Magnitude < 0.01 then return end
 			
 			local direction = dirVec.Unit
-			local ray = Ray.new(origin, direction * 1000)
+			local ray = Ray.new(origin, direction * 2000)
 			local ok = pcall(function()
 				gun.castRay:FireServer(ray, targetPos, target.player, target.targetPart)
 			end)
 			
 			if ok then
 				self.lastShot = currentTime
+				self.shotAttempts = self.shotAttempts + 1
+			end
+			
+		elseif gun.type == "ShootRay" then
+			if not gun.hole or not gun.hole.Parent then return end
+			
+			local origin = gun.hole.Position
+			local dirVec = targetPos - origin
+			if dirVec.Magnitude < 0.01 then return end
+			
+			local direction = dirVec.Unit
+			local ray = Ray.new(origin, direction * 2000)
+			local ok = pcall(function()
+				gun.shootRay:FireServer(ray, target.targetPart, target.player)
+			end)
+			
+			if ok then
+				self.lastShot = currentTime
+				self.shotAttempts = self.shotAttempts + 1
 			end
 			
 		elseif gun.type == "Generic" then
@@ -537,11 +574,12 @@ function RageModule:Start()
 			
 			local direction = dirVec.Unit
 			local ok = pcall(function()
-				gun.shootEvent:FireServer(targetPos, target.targetPart, direction)
+				gun.shootEvent:FireServer(targetPos, target.targetPart, direction, target.player)
 			end)
 			
 			if ok then
 				self.lastShot = currentTime
+				self.shotAttempts = self.shotAttempts + 1
 			end
 		end
 	end)
