@@ -619,68 +619,6 @@ function RageModule:Shoot(weapon, origin, targetPos, targetPart)
 	return success
 end
 
-function RageModule:ManualShoot()
-	if not self.enabled or not self.manualFire or not self.mouseDown then return end
-	
-	local now = tick()
-	local currentDelay = self.fireRate + self.nextFireDelay
-	
-	if now - self.lastShot < currentDelay then return end
-	
-	local myChar = self.player.Character
-	if not myChar or not self:IsAlive(myChar) then return end
-	
-	local myHead = myChar:FindFirstChild("Head")
-	if not myHead then return end
-	
-	local weapon = self:GetWeapon()
-	if not weapon then return end
-	
-	local mouse = self.player:GetMouse()
-	if not mouse then return end
-	
-	self:HandleScope(weapon, true)
-	
-	local targetPos = mouse.Hit.Position
-	local direction = (targetPos - myHead.Position).Unit
-	
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = {myChar}
-	params.IgnoreWater = true
-	
-	local result = self.Workspace:Raycast(myHead.Position, direction * 1000, params)
-	
-	if result then
-		local hitChar = result.Instance:FindFirstAncestorOfClass("Model")
-		if hitChar and hitChar:FindFirstChild("Humanoid") then
-			local targetPlayer = self.Players:GetPlayerFromCharacter(hitChar)
-			if targetPlayer and targetPlayer ~= self.player then
-				if self:IsEnemy(targetPlayer) and self:IsAlive(hitChar) then
-					local targetRoot = hitChar:FindFirstChild("HumanoidRootPart")
-					if targetRoot then
-						local predictedPos = self:PredictPosition(result.Instance, targetRoot)
-						
-						local success = self:Shoot(weapon, myHead.Position, predictedPos, result.Instance)
-						
-						if success then
-							self.lastShot = now
-							self.nextFireDelay = (math.random() - 0.5) * self.humanization
-						end
-						return
-					end
-				end
-			end
-		end
-	end
-	
-	local success = self:Shoot(weapon, myHead.Position, targetPos, nil)
-	if success then
-		self.lastShot = now
-		self.nextFireDelay = (math.random() - 0.5) * self.humanization
-	end
-end
-
 function RageModule:MainLoop()
 	if not self.enabled or not self.autoFire then return end
 	
@@ -710,9 +648,19 @@ function RageModule:MainLoop()
 		
 		if myRoot then
 			for _, target in ipairs(targets) do
+				if not target or not target.character then continue end
+				
 				local hitboxPart = self:GetHitboxPart(target.character)
 				if hitboxPart then
-					local canSee = self:WallCheck(myHead.Position, hitboxPart.Position, {myChar, target.character})
+					local ignoreList = {}
+					if myChar and typeof(myChar) == "Instance" then
+						table.insert(ignoreList, myChar)
+					end
+					if target.character and typeof(target.character) == "Instance" then
+						table.insert(ignoreList, target.character)
+					end
+					
+					local canSee = self:WallCheck(myHead.Position, hitboxPart.Position, ignoreList)
 					if canSee then
 						visibleCount = visibleCount + 1
 					end
