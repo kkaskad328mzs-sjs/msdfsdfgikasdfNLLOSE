@@ -672,6 +672,184 @@ function lib:create(title)
                 return g
             end
             
+            function g:multidropdown(text,opts,defs,cb)
+                local f=Instance.new("Frame")
+                f.Size=UDim2.new(1,0,0,34)
+                f.BackgroundTransparency=1
+                f.ClipsDescendants=false
+                f.ZIndex=10
+                f.Parent=cnt
+                
+                local lbl=Instance.new("TextLabel")
+                lbl.Text=text
+                lbl.Size=UDim2.new(1,0,0,12)
+                lbl.BackgroundTransparency=1
+                lbl.TextXAlignment=Enum.TextXAlignment.Left
+                lbl.TextColor3=t.dim
+                lbl.Font=t.font
+                lbl.TextSize=11
+                lbl.Parent=f
+                
+                local selected={}
+                for _,d in ipairs(defs) do selected[d]=true end
+                
+                local function getDisplayText()
+                    local s={}
+                    for _,o in ipairs(opts) do if selected[o] then table.insert(s,o) end end
+                    return #s>0 and table.concat(s,", ").." ▼" or "None ▼"
+                end
+                
+                local box=Instance.new("TextButton")
+                box.Size=UDim2.new(1,0,0,18)
+                box.Position=UDim2.new(0,0,0,16)
+                box.BackgroundColor3=t.dark
+                box.BorderSizePixel=0
+                box.Text=getDisplayText()
+                box.TextColor3=t.text
+                box.Font=t.font
+                box.TextSize=11
+                box.TextTruncate=Enum.TextTruncate.AtEnd
+                box.Parent=f
+                
+                local boxCorner=Instance.new("UICorner")
+                boxCorner.CornerRadius=UDim.new(0,3)
+                boxCorner.Parent=box
+                
+                local boxStroke=Instance.new("UIStroke")
+                boxStroke.Color=t.stroke
+                boxStroke.Thickness=1
+                boxStroke.Parent=box
+                
+                local popup=Instance.new("Frame")
+                popup.Size=UDim2.new(0,0,0,0)
+                popup.Position=UDim2.new(0,0,0,36)
+                popup.BackgroundColor3=t.dark
+                popup.BorderSizePixel=0
+                popup.Visible=false
+                popup.ClipsDescendants=true
+                popup.ZIndex=200
+                popup.Parent=r.gui
+                
+                local popCorner=Instance.new("UICorner")
+                popCorner.CornerRadius=UDim.new(0,3)
+                popCorner.Parent=popup
+                
+                local popStroke=Instance.new("UIStroke")
+                popStroke.Color=t.stroke
+                popStroke.Thickness=1
+                popStroke.Parent=popup
+                
+                local scroll=Instance.new("ScrollingFrame")
+                scroll.Size=UDim2.new(1,-4,1,-4)
+                scroll.Position=UDim2.new(0,2,0,2)
+                scroll.BackgroundTransparency=1
+                scroll.BorderSizePixel=0
+                scroll.ScrollBarThickness=3
+                scroll.ScrollBarImageColor3=t.accent
+                scroll.CanvasSize=UDim2.new(0,0,0,#opts*22)
+                scroll.ZIndex=201
+                scroll.Parent=popup
+                
+                local oll=Instance.new("UIListLayout")
+                oll.Parent=scroll
+                
+                local open=false
+                local checkboxes={}
+                
+                for _,opt in ipairs(opts) do
+                    local ob=Instance.new("Frame")
+                    ob.Size=UDim2.new(1,0,0,22)
+                    ob.BackgroundTransparency=1
+                    ob.ZIndex=202
+                    ob.Parent=scroll
+                    
+                    local chk=Instance.new("Frame")
+                    chk.Size=UDim2.new(0,14,0,14)
+                    chk.Position=UDim2.new(0,4,0,4)
+                    chk.BackgroundColor3=selected[opt] and t.accent or t.dark
+                    chk.BorderSizePixel=0
+                    chk.ZIndex=203
+                    chk.Parent=ob
+                    
+                    local chkCorner=Instance.new("UICorner")
+                    chkCorner.CornerRadius=UDim.new(0,3)
+                    chkCorner.Parent=chk
+                    
+                    local chkStroke=Instance.new("UIStroke")
+                    chkStroke.Color=selected[opt] and t.accent or t.stroke
+                    chkStroke.Thickness=1
+                    chkStroke.ZIndex=203
+                    chkStroke.Parent=chk
+                    
+                    local otxt=Instance.new("TextLabel")
+                    otxt.Text=opt
+                    otxt.Size=UDim2.new(1,-24,1,0)
+                    otxt.Position=UDim2.new(0,22,0,0)
+                    otxt.BackgroundTransparency=1
+                    otxt.TextXAlignment=Enum.TextXAlignment.Left
+                    otxt.TextColor3=selected[opt] and t.accent or t.dim
+                    otxt.Font=t.font
+                    otxt.TextSize=11
+                    otxt.ZIndex=203
+                    otxt.Parent=ob
+                    
+                    local btn=Instance.new("TextButton")
+                    btn.Size=UDim2.new(1,0,1,0)
+                    btn.BackgroundTransparency=1
+                    btn.Text=""
+                    btn.ZIndex=204
+                    btn.Parent=ob
+                    
+                    checkboxes[opt]={chk=chk,stroke=chkStroke,txt=otxt}
+                    
+                    btn.MouseButton1Click:Connect(function()
+                        selected[opt]=not selected[opt]
+                        chk.BackgroundColor3=selected[opt] and t.accent or t.dark
+                        chkStroke.Color=selected[opt] and t.accent or t.stroke
+                        otxt.TextColor3=selected[opt] and t.accent or t.dim
+                        box.Text=getDisplayText()
+                        local s={}
+                        for _,o in ipairs(opts) do if selected[o] then table.insert(s,o) end end
+                        if cb then cb(s) end
+                    end)
+                end
+                
+                box.MouseButton1Click:Connect(function()
+                    open=not open
+                    if open then
+                        local absPos=box.AbsolutePosition
+                        local targetH=math.min(#opts*22+4,200)
+                        popup.Position=UDim2.new(0,absPos.X,0,absPos.Y+20)
+                        popup.Size=UDim2.new(0,0,0,0)
+                        popup.Visible=true
+                        ts:Create(popup,TweenInfo.new(0.15,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.new(0,box.AbsoluteSize.X,0,targetH)}):Play()
+                    else
+                        ts:Create(popup,TweenInfo.new(0.15,Enum.EasingStyle.Quad,Enum.EasingDirection.In),{Size=UDim2.new(0,box.AbsoluteSize.X,0,0)}):Play()
+                        task.wait(0.15)
+                        popup.Visible=false
+                    end
+                end)
+                
+                table.insert(r.conns,uis.InputBegan:Connect(function(i)
+                    if i.UserInputType==Enum.UserInputType.MouseButton1 and open then
+                        local mp=uis:GetMouseLocation()
+                        local pp=popup.AbsolutePosition
+                        local ps=popup.AbsoluteSize
+                        local bp=box.AbsolutePosition
+                        local bs=box.AbsoluteSize
+                        if (mp.X<pp.X or mp.X>pp.X+ps.X or mp.Y<pp.Y or mp.Y>pp.Y+ps.Y) and
+                           (mp.X<bp.X or mp.X>bp.X+bs.X or mp.Y<bp.Y or mp.Y>bp.Y+bs.Y) then
+                            ts:Create(popup,TweenInfo.new(0.2,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.new(0,0,0,0)}):Play()
+                            task.wait(0.2)
+                            popup.Visible=false
+                            open=false
+                        end
+                    end
+                end))
+                
+                return g
+            end
+            
             function g:keybind(text,def,cb)
                 local f=Instance.new("Frame")
                 f.Size=UDim2.new(1,0,0,18)
