@@ -12,7 +12,6 @@ function RageModule.new(player)
 	
 	self.enabled = false
 	self.autoFire = true
-	self.manualFire = false
 	self.autoEquip = false
 	self.hitboxes = {"Head"}
 	self.maxDistance = math.huge
@@ -36,12 +35,17 @@ function RageModule.new(player)
 	self.maxVelocity = 150
 	self.humanization = 0.02
 	
+	self.doubleTapEnabled = false
+	self.doubleTapActive = false
+	self.doubleTapDistance = 5
+	self.lastDoubleTap = 0
+	self.doubleTapCooldown = 1.0
+	
 	self.fireRate = 0.1
 	self.lastShot = 0
 	self.isScoped = false
 	self.frameCounter = 0
 	self.nextFireDelay = 0
-	self.mouseDown = false
 	
 	self.targetCache = {}
 	self.targetCacheTime = 0
@@ -49,10 +53,6 @@ function RageModule.new(player)
 	self.weaponCache = nil
 	self.weaponCacheTime = 0
 	self.WEAPON_CACHE_INTERVAL = 2
-	
-	self.rayParams = RaycastParams.new()
-	self.rayParams.FilterType = Enum.RaycastFilterType.Exclude
-	self.rayParams.IgnoreWater = true
 	
 	self.hitboxParts = {
 		Head = {"Head"},
@@ -245,8 +245,12 @@ function RageModule:WallCheck(origin, targetPos, ignoreList)
 		end
 	end
 	
-	self.rayParams.FilterDescendantsInstances = filterList
-	local result = self.Workspace:Raycast(origin, direction, self.rayParams)
+	local rayParams = RaycastParams.new()
+	rayParams.FilterType = Enum.RaycastFilterType.Exclude
+	rayParams.FilterDescendantsInstances = filterList
+	rayParams.IgnoreWater = true
+	
+	local result = self.Workspace:Raycast(origin, direction, rayParams)
 	
 	if not result then return true end
 	
@@ -340,12 +344,18 @@ function RageModule:CalculateHitChance(origin, targetPart, targetChar, spreadAng
 	local targetPos = targetPart.Position
 	local targetSize = targetPart.Size
 	
-	self.rayParams.FilterDescendantsInstances = {self.player.Character}
+	local myChar = self.player.Character
+	if not myChar then return 0 end
+	
+	local rayParams = RaycastParams.new()
+	rayParams.FilterType = Enum.RaycastFilterType.Exclude
+	rayParams.FilterDescendantsInstances = {myChar}
+	rayParams.IgnoreWater = true
 	
 	for _ = 1, iterations do
 		local spreadDir = self:SimulateSpread(origin, targetPos, spreadAngle)
 		local maxDist = (targetPos - origin).Magnitude + targetSize.Magnitude
-		local result = self.Workspace:Raycast(origin, spreadDir * maxDist, self.rayParams)
+		local result = self.Workspace:Raycast(origin, spreadDir * maxDist, rayParams)
 		
 		if result and result.Instance:IsDescendantOf(targetChar) then
 			hits = hits + 1
@@ -424,6 +434,94 @@ function RageModule:HandleScope(weapon, shouldScope)
 	end
 end
 
+function RageModule:FindSafeTeleportPosition(origin, direction, distance, ignoreList)
+	local testPositions = {}
+	
+	for i = 1, 5 do
+		local testDist = distance * (i / 5)
+		local testPos = origin + direction * testDist
+		table.insert(testPositions, {pos = testPos, dist = testDist})
+	end
+	
+	table.sort(testPositions, function(a, b) return a.dist > b.dist end)
+	
+	local filterList = {}
+	for _, item in ipairs(ignoreList) do
+		if item and typeof(item) == "Instance" then
+			table.insert(filterList, item)
+		end
+	end
+	
+	local rayParams = RaycastParams.new()
+	rayParams.FilterType = Enum.RaycastFilterType.Exclude
+	rayParams.FilterDescendantsInstances = filterList
+	rayParams.IgnoreWater = true
+	
+	for _, testData in ipairs(testPositions) do
+		local testPos = testData.pos
+		
+		local checkDirs = {
+			Vector3.new(0, -3, 0),
+			Vector3.new(0, 0, 0),
+			Vector3.new(1, 0, 0),
+			Vector3.new(-1, 0, 0),
+			Vector3.new(0, 0, 1),
+			Vector3.new(0, 0, -1),
+		}
+		
+		local isSafe = true
+		for _, dir in ipairs(checkDirs) do
+			if dir.Magnitude > 0.1 then
+				local result = self.Workspace:Raycast(testPos, dir.Unit * dir.Magnitude, rayParams)
+				if result and not result.Instance:IsDescendantOf(self.player.Character) then
+					isSafe = false
+					break
+				end
+			end
+		end
+		
+		if isSafe then
+			local groundCheck = self.Workspace:Raycast(testPos, Vector3.new(0, -5, 0), rayParams)
+			if groundCheck then
+				return testPos
+			end
+		end
+	end
+	
+	return nil
+end
+
+function RageModule:ExecuteDoubleTap(targetPos)
+	if not self.doubleTapEnabled or not self.doubleTapActive then return false end
+	
+	local now = tick()
+	if now - self.lastDoubleTap < self.doubleTapCooldown then return false end
+	
+	local myChar = self.player.Character
+	if not myChar then return false end
+	
+	local myRoot = myChar:FindFirstChild("HumanoidRootPart")
+	if not myRoot then return false end
+	
+	local direction = (targetPos - myRoot.Position).Unit
+	local horizontalDir = Vector3.new(direction.X, 0, direction.Z).Unit
+	
+	local safePos = self:FindSafeTeleportPosition(
+		myRoot.Position,
+		horizontalDir,
+		self.doubleTapDistance,
+		{myChar}
+	)
+	
+	if safePos then
+		myRoot.CFrame = CFrame.new(safePos)
+		self.lastDoubleTap = now
+		return true
+	end
+	
+	return false
+end
+
 function RageModule:Shoot(weapon, origin, targetPos, targetPart)
 	local direction = (targetPos - origin).Unit
 	
@@ -433,6 +531,13 @@ function RageModule:Shoot(weapon, origin, targetPos, targetPart)
 			weapon.shotAck:FireServer()
 		end
 	end)
+	
+	if success and self.doubleTapEnabled and self.doubleTapActive then
+		task.spawn(function()
+			task.wait(0.05)
+			self:ExecuteDoubleTap(targetPos)
+		end)
+	end
 	
 	return success
 end
@@ -571,26 +676,18 @@ end
 function RageModule:Start()
 	local UIS = game:GetService("UserInputService")
 	
+	self.doubleTapKeybind = Enum.KeyCode.E
+	
 	self.RunService.Heartbeat:Connect(function()
 		if self.enabled then
-			if self.manualFire then
-				self:ManualShoot()
-			else
-				self:MainLoop()
-			end
+			self:MainLoop()
 		end
 	end)
 	
 	UIS.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed then return end
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			self.mouseDown = true
-		end
-	end)
-	
-	UIS.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			self.mouseDown = false
+		if input.KeyCode == self.doubleTapKeybind and self.doubleTapEnabled then
+			self.doubleTapActive = not self.doubleTapActive
 		end
 	end)
 	
@@ -598,18 +695,7 @@ function RageModule:Start()
 end
 
 function RageModule:SetEnabled(value) self.enabled = value end
-function RageModule:SetAutoFire(value) 
-	self.autoFire = value
-	if value then
-		self.manualFire = false
-	end
-end
-function RageModule:SetManualFire(value)
-	self.manualFire = value
-	if value then
-		self.autoFire = false
-	end
-end
+function RageModule:SetAutoFire(value) self.autoFire = value end
 function RageModule:SetAutoEquip(value) self.autoEquip = value end
 function RageModule:SetHitboxes(value) 
 	if type(value) == "table" then
@@ -639,5 +725,9 @@ function RageModule:SetMaxVelocity(value) self.maxVelocity = value end
 function RageModule:SetHumanization(value) self.humanization = value end
 function RageModule:SetMultiPoint(value) self.smartPoint = value end
 function RageModule:SetAutoStop(value) end
+function RageModule:SetDoubleTapEnabled(value) self.doubleTapEnabled = value end
+function RageModule:SetDoubleTapActive(value) self.doubleTapActive = value end
+function RageModule:SetDoubleTapKeybind(key) self.doubleTapKeybind = key end
+function RageModule:GetDoubleTapActive() return self.doubleTapActive end
 
 return RageModule
