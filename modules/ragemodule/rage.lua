@@ -236,13 +236,20 @@ function RageModule:WallCheck(origin, targetPos, ignoreList)
 	
 	if distance < 0.1 then return true end
 	
-	self.rayParams.FilterDescendantsInstances = ignoreList
+	local filterList = {}
+	for _, item in ipairs(ignoreList) do
+		if item and typeof(item) == "Instance" then
+			table.insert(filterList, item)
+		end
+	end
+	
+	self.rayParams.FilterDescendantsInstances = filterList
 	local result = self.Workspace:Raycast(origin, direction, self.rayParams)
 	
 	if not result then return true end
 	
-	for _, char in ipairs(ignoreList) do
-		if char and typeof(char) == "Instance" and result.Instance:IsDescendantOf(char) then
+	for _, char in ipairs(filterList) do
+		if result.Instance:IsDescendantOf(char) then
 			return true
 		end
 	end
