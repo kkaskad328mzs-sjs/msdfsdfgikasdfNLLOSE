@@ -12,7 +12,8 @@ function RageModule.new(player)
 	
 	self.enabled = false
 	self.autoFire = true
-	self.hitbox = "Head"
+	self.autoEquip = false
+	self.hitboxes = {"Head"}
 	self.maxDistance = math.huge
 	self.teamCheck = true
 	self.wallCheck = true
@@ -53,8 +54,16 @@ function RageModule.new(player)
 	
 	self.hitboxParts = {
 		Head = {"Head"},
-		Torso = {"UpperTorso", "LowerTorso", "Torso"},
+		Neck = {"UpperTorso"},
+		Chest = {"UpperTorso"},
+		Stomach = {"LowerTorso"},
 		Pelvis = {"HumanoidRootPart"},
+		LeftArm = {"LeftUpperArm", "LeftLowerArm"},
+		RightArm = {"RightUpperArm", "RightLowerArm"},
+		LeftLeg = {"LeftUpperLeg", "LeftLowerLeg"},
+		RightLeg = {"RightUpperLeg", "RightLowerLeg"},
+		Arms = {"LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm"},
+		Legs = {"LeftUpperLeg", "RightUpperLeg", "LeftLowerLeg", "RightLowerLeg"},
 	}
 	
 	self.damageMultipliers = {
@@ -100,8 +109,22 @@ function RageModule:GetWeapon()
 	
 	local tool = char:FindFirstChildOfClass("Tool")
 	if not tool then
-		self.weaponCache = nil
-		return nil
+		if self.autoEquip then
+			local backpack = self.player:FindFirstChild("Backpack")
+			if backpack then
+				local ssg = backpack:FindFirstChild("SSG-08")
+				if ssg and ssg:IsA("Tool") then
+					char.Humanoid:EquipTool(ssg)
+					task.wait(0.1)
+					tool = char:FindFirstChildOfClass("Tool")
+				end
+			end
+		end
+		
+		if not tool then
+			self.weaponCache = nil
+			return nil
+		end
 	end
 	
 	local remotes = tool:FindFirstChild("Remotes")
@@ -324,11 +347,14 @@ function RageModule:CalculateHitChance(origin, targetPart, targetChar, spreadAng
 end
 
 function RageModule:GetHitboxPart(character)
-	local parts = self.hitboxParts[self.hitbox] or self.hitboxParts.Head
-	
-	for _, partName in ipairs(parts) do
-		local part = character:FindFirstChild(partName)
-		if part then return part end
+	for _, hitboxName in ipairs(self.hitboxes) do
+		local parts = self.hitboxParts[hitboxName]
+		if parts then
+			for _, partName in ipairs(parts) do
+				local part = character:FindFirstChild(partName)
+				if part then return part end
+			end
+		end
 	end
 	
 	return character:FindFirstChild("Head")
@@ -478,7 +504,14 @@ end
 
 function RageModule:SetEnabled(value) self.enabled = value end
 function RageModule:SetAutoFire(value) self.autoFire = value end
-function RageModule:SetHitbox(value) self.hitbox = value end
+function RageModule:SetAutoEquip(value) self.autoEquip = value end
+function RageModule:SetHitboxes(value) 
+	if type(value) == "table" then
+		self.hitboxes = value
+	else
+		self.hitboxes = {value}
+	end
+end
 function RageModule:SetMaxDistance(value) self.maxDistance = value end
 function RageModule:SetTeamCheck(value) self.teamCheck = value end
 function RageModule:SetWallCheck(value) self.wallCheck = value end
