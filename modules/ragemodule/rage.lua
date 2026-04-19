@@ -13,7 +13,7 @@ function RageModule.new(player)
 	self.enabled = false
 	self.autoFire = true
 	self.hitbox = "Head"
-	self.maxDistance = 500
+	self.maxDistance = math.huge
 	self.teamCheck = true
 	self.wallCheck = true
 	self.predictionEnabled = true
@@ -32,7 +32,6 @@ function RageModule.new(player)
 	self.fovSize = 180
 	self.velocityCheck = true
 	self.maxVelocity = 150
-	self.adaptiveFireRate = true
 	self.humanization = 0.02
 	
 	self.fireRate = 0.1
@@ -230,7 +229,8 @@ end
 
 function RageModule:SmartPointCheck(origin, targetPart, ignoreList)
 	if not self.smartPoint then
-		return self:WallCheck(origin, targetPart.Position, ignoreList), targetPart.Position
+		local canSee = self:WallCheck(origin, targetPart.Position, ignoreList)
+		return canSee, targetPart.Position
 	end
 	
 	local offsets = {
@@ -497,7 +497,6 @@ function RageModule:SetFovCheck(value) self.fovCheck = value end
 function RageModule:SetFovSize(value) self.fovSize = value end
 function RageModule:SetVelocityCheck(value) self.velocityCheck = value end
 function RageModule:SetMaxVelocity(value) self.maxVelocity = value end
-function RageModule:SetAdaptiveFireRate(value) self.adaptiveFireRate = value end
 function RageModule:SetHumanization(value) self.humanization = value end
 function RageModule:SetMultiPoint(value) self.smartPoint = value end
 function RageModule:SetAutoStop(value) end
