@@ -452,14 +452,19 @@ function RageModule:ReequipWeapon()
 	local tool = myChar:FindFirstChildOfClass("Tool")
 	if not tool then return false end
 	
-	local toolRef = tool
+	local toolName = tool.Name
 	hum:UnequipTools()
-	task.wait(0.05)
+	task.wait(0.1)
 	
-	if toolRef and toolRef.Parent and hum and hum.Parent then
-		hum:EquipTool(toolRef)
-		self.weaponCache = nil
-		return true
+	local backpack = self.player:FindFirstChild("Backpack")
+	if backpack then
+		local foundTool = backpack:FindFirstChild(toolName)
+		if foundTool and foundTool:IsA("Tool") then
+			hum:EquipTool(foundTool)
+			self.weaponCache = nil
+			self.weaponCacheTime = 0
+			return true
+		end
 	end
 	
 	return false
@@ -478,13 +483,15 @@ function RageModule:RapidFireBurst(weapon, origin, targetPos, targetPart)
 		local myHead = myChar:FindFirstChild("Head")
 		if not myHead then break end
 		
+		if not weapon.fireShot or not weapon.fireShot.Parent then break end
+		
 		local jitter = Vector3.new(
-			(math.random() - 0.5) * 0.005,
-			(math.random() - 0.5) * 0.005,
-			(math.random() - 0.5) * 0.005
+			(math.random() - 0.5) * 0.01,
+			(math.random() - 0.5) * 0.01,
+			(math.random() - 0.5) * 0.01
 		)
 		
-		local jitteredOrigin = origin + jitter
+		local jitteredOrigin = myHead.Position + jitter
 		local direction = (targetPos - jitteredOrigin).Unit
 		
 		local success = pcall(function()
@@ -497,13 +504,8 @@ function RageModule:RapidFireBurst(weapon, origin, targetPos, targetPart)
 		if success then
 			fired = fired + 1
 		end
-	end
-	
-	if self.rapidFireReequip and fired > 0 then
-		task.spawn(function()
-			task.wait(0.1)
-			self:ReequipWeapon()
-		end)
+		
+		task.wait(0.03)
 	end
 	
 	return fired
@@ -586,7 +588,12 @@ function RageModule:Shoot(weapon, origin, targetPos, targetPart)
 	if success and self.rapidFireEnabled and self.rapidFireActive then
 		task.spawn(function()
 			task.wait(0.05)
-			self:RapidFireBurst(weapon, origin, targetPos, targetPart)
+			local fired = self:RapidFireBurst(weapon, origin, targetPos, targetPart)
+			
+			if self.rapidFireReequip and fired > 0 then
+				task.wait(0.1)
+				self:ReequipWeapon()
+			end
 		end)
 	end
 	
@@ -596,7 +603,7 @@ function RageModule:Shoot(weapon, origin, targetPos, targetPart)
 			local myChar = self.player.Character
 			if myChar then
 				local myHead = myChar:FindFirstChild("Head")
-				if myHead then
+				if myHead and weapon.fireShot and weapon.fireShot.Parent then
 					local dir = (targetPos - myHead.Position).Unit
 					pcall(function()
 						weapon.fireShot:FireServer(myHead.Position, dir, targetPart)
