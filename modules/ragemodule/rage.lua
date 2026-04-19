@@ -12,6 +12,7 @@ function RageModule.new(player)
 	
 	self.enabled = false
 	self.autoFire = true
+	self.manualFire = false
 	self.autoEquip = false
 	self.hitboxes = {"Head"}
 	self.maxDistance = math.huge
@@ -40,6 +41,7 @@ function RageModule.new(player)
 	self.isScoped = false
 	self.frameCounter = 0
 	self.nextFireDelay = 0
+	self.mouseDown = false
 	
 	self.targetCache = {}
 	self.targetCacheTime = 0
@@ -359,12 +361,13 @@ function RageModule:GetHitboxPart(character)
 		if parts then
 			for _, partName in ipairs(parts) do
 				local part = character:FindFirstChild(partName)
-				if part then return part end
+				if part then return part, hitboxName end
 			end
 		end
 	end
 	
-	return character:FindFirstChild("Head")
+	local head = character:FindFirstChild("Head")
+	return head, "Head"
 end
 
 function RageModule:ScanBestHitbox(myHead, target)
@@ -373,32 +376,36 @@ function RageModule:ScanBestHitbox(myHead, target)
 	end
 	
 	local targetHealth = self:GetTargetHealth(target.character)
-	local bestPart, bestDamage = nil, 0
+	local bestPart, bestDamage, bestPos = nil, 0, nil
 	local myChar = self.player.Character
 	
-	for _, group in ipairs(self.scanPriority) do
-		for _, partName in ipairs(group.parts) do
-			local part = target.character:FindFirstChild(partName)
-			if part then
-				local canSee, visiblePos = self:SmartPointCheck(myHead.Position, part, {myChar, target.character})
-				
-				if canSee then
-					local damage = self:CalculateDamage(partName, target.distance)
+	for _, hitboxName in ipairs(self.hitboxes) do
+		local parts = self.hitboxParts[hitboxName]
+		if parts then
+			for _, partName in ipairs(parts) do
+				local part = target.character:FindFirstChild(partName)
+				if part then
+					local canSee, visiblePos = self:SmartPointCheck(myHead.Position, part, {myChar, target.character})
 					
-					if self.minDamageOverkill and damage >= targetHealth then
-						return part, visiblePos
-					end
-					
-					if damage >= self.minDamageValue and damage > bestDamage then
-						bestPart = part
-						bestDamage = damage
+					if canSee then
+						local damage = self:CalculateDamage(partName, target.distance)
+						
+						if self.minDamageOverkill and damage >= targetHealth then
+							return part, visiblePos
+						end
+						
+						if damage >= self.minDamageValue and damage > bestDamage then
+							bestPart = part
+							bestDamage = damage
+							bestPos = visiblePos
+						end
 					end
 				end
 			end
 		end
 	end
 	
-	return bestPart, bestPart and bestPart.Position or nil
+	return bestPart, bestPos
 end
 
 function RageModule:HandleScope(weapon, shouldScope)
@@ -428,6 +435,68 @@ function RageModule:Shoot(weapon, origin, targetPos, targetPart)
 	end)
 	
 	return success
+end
+
+function RageModule:ManualShoot()
+	if not self.enabled or not self.manualFire or not self.mouseDown then return end
+	
+	local now = tick()
+	local currentDelay = self.fireRate + self.nextFireDelay
+	
+	if now - self.lastShot < currentDelay then return end
+	
+	local myChar = self.player.Character
+	if not myChar or not self:IsAlive(myChar) then return end
+	
+	local myHead = myChar:FindFirstChild("Head")
+	if not myHead then return end
+	
+	local weapon = self:GetWeapon()
+	if not weapon then return end
+	
+	local mouse = self.player:GetMouse()
+	if not mouse then return end
+	
+	self:HandleScope(weapon, true)
+	
+	local targetPos = mouse.Hit.Position
+	local direction = (targetPos - myHead.Position).Unit
+	
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = {myChar}
+	params.IgnoreWater = true
+	
+	local result = self.Workspace:Raycast(myHead.Position, direction * 1000, params)
+	
+	if result then
+		local hitChar = result.Instance:FindFirstAncestorOfClass("Model")
+		if hitChar and hitChar:FindFirstChild("Humanoid") then
+			local targetPlayer = self.Players:GetPlayerFromCharacter(hitChar)
+			if targetPlayer and targetPlayer ~= self.player then
+				if self:IsEnemy(targetPlayer) and self:IsAlive(hitChar) then
+					local targetRoot = hitChar:FindFirstChild("HumanoidRootPart")
+					if targetRoot then
+						local predictedPos = self:PredictPosition(result.Instance, targetRoot)
+						
+						local success = self:Shoot(weapon, myHead.Position, predictedPos, result.Instance)
+						
+						if success then
+							self.lastShot = now
+							self.nextFireDelay = (math.random() - 0.5) * self.humanization
+						end
+						return
+					end
+				end
+			end
+		end
+	end
+	
+	local success = self:Shoot(weapon, myHead.Position, targetPos, nil)
+	if success then
+		self.lastShot = now
+		self.nextFireDelay = (math.random() - 0.5) * self.humanization
+	end
 end
 
 function RageModule:MainLoop()
@@ -500,9 +569,28 @@ function RageModule:MainLoop()
 end
 
 function RageModule:Start()
+	local UIS = game:GetService("UserInputService")
+	
 	self.RunService.Heartbeat:Connect(function()
 		if self.enabled then
-			self:MainLoop()
+			if self.manualFire then
+				self:ManualShoot()
+			else
+				self:MainLoop()
+			end
+		end
+	end)
+	
+	UIS.InputBegan:Connect(function(input, gameProcessed)
+		if gameProcessed then return end
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			self.mouseDown = true
+		end
+	end)
+	
+	UIS.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			self.mouseDown = false
 		end
 	end)
 	
@@ -510,7 +598,18 @@ function RageModule:Start()
 end
 
 function RageModule:SetEnabled(value) self.enabled = value end
-function RageModule:SetAutoFire(value) self.autoFire = value end
+function RageModule:SetAutoFire(value) 
+	self.autoFire = value
+	if value then
+		self.manualFire = false
+	end
+end
+function RageModule:SetManualFire(value)
+	self.manualFire = value
+	if value then
+		self.autoFire = false
+	end
+end
 function RageModule:SetAutoEquip(value) self.autoEquip = value end
 function RageModule:SetHitboxes(value) 
 	if type(value) == "table" then
