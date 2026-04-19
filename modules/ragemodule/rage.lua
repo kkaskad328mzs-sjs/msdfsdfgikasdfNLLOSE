@@ -3,13 +3,13 @@ RageModule.__index = RageModule
 
 function RageModule.new(player)
 	local self = setmetatable({}, RageModule)
-
+	
 	self.player = player
 	self.Players = game:GetService("Players")
 	self.RunService = game:GetService("RunService")
 	self.Workspace = game:GetService("Workspace")
 	self.Camera = self.Workspace.CurrentCamera
-
+	
 	self.enabled = false
 	self.autoFire = true
 	self.hitbox = "Head"
@@ -18,45 +18,46 @@ function RageModule.new(player)
 	self.wallCheck = true
 	self.predictionEnabled = true
 	self.predictionMultiplier = 1.0
-
+	
 	self.hitchanceEnabled = false
 	self.hitchanceValue = 80
-	self.hitchanceIterations = 25 
+	self.hitchanceIterations = 25
 	self.minDamageEnabled = false
 	self.minDamageValue = 20
 	self.minDamageOverkill = true
 	self.autoScope = true
-	self.smartPoint = false 
-
+	self.smartPoint = false
+	
 	self.fovCheck = false
 	self.fovSize = 180
 	self.velocityCheck = true
-	self.maxVelocity = 150 
+	self.maxVelocity = 150
 	self.adaptiveFireRate = true
-
+	self.humanization = 0.02
+	
 	self.fireRate = 0.1
 	self.lastShot = 0
 	self.isScoped = false
 	self.frameCounter = 0
-	self.lastFPS = 60
-
+	self.nextFireDelay = 0
+	
 	self.targetCache = {}
 	self.targetCacheTime = 0
 	self.TARGET_CACHE_INTERVAL = 0.5
 	self.weaponCache = nil
 	self.weaponCacheTime = 0
 	self.WEAPON_CACHE_INTERVAL = 2
-
+	
 	self.rayParams = RaycastParams.new()
 	self.rayParams.FilterType = Enum.RaycastFilterType.Exclude
 	self.rayParams.IgnoreWater = true
-
+	
 	self.hitboxParts = {
 		Head = {"Head"},
 		Torso = {"UpperTorso", "LowerTorso", "Torso"},
 		Pelvis = {"HumanoidRootPart"},
 	}
-
+	
 	self.damageMultipliers = {
 		Head = 4.0,
 		UpperTorso = 1.0,
@@ -97,13 +98,13 @@ function RageModule:GetWeapon()
 		self.weaponCache = nil
 		return nil 
 	end
-
+	
 	local tool = char:FindFirstChildOfClass("Tool")
 	if not tool then
 		self.weaponCache = nil
 		return nil
 	end
-
+	
 	local remotes = tool:FindFirstChild("Remotes")
 	if remotes then
 		local fireShot = remotes:FindFirstChild("FireShot")
@@ -139,7 +140,7 @@ function RageModule:IsEnemy(targetPlayer)
 	end
 	return true
 end
---кеш
+
 function RageModule:GetTargets()
 	local now = tick()
 	if now - self.targetCacheTime < self.TARGET_CACHE_INTERVAL and #self.targetCache > 0 then
@@ -165,12 +166,11 @@ function RageModule:GetTargets()
 				if targetRoot then
 					local distance = (myPos - targetRoot.Position).Magnitude
 					if distance <= self.maxDistance then
-
 						local velocity = targetRoot.AssemblyLinearVelocity or targetRoot.Velocity or Vector3.new()
 						if self.velocityCheck and velocity.Magnitude > self.maxVelocity then
 							continue
 						end
-
+						
 						local fovAngle = 360
 						if self.fovCheck then
 							local dirToTarget = (targetRoot.Position - camCF.Position).Unit
@@ -197,7 +197,7 @@ function RageModule:GetTargets()
 			end
 		end
 	end
-
+	
 	table.sort(targets, function(a, b)
 		return a.distance < b.distance
 	end)
@@ -207,10 +207,6 @@ function RageModule:GetTargets()
 	
 	return targets
 end
-
--- ============================================
--- 4. CHECKS & VALIDATION
--- ============================================
 
 function RageModule:WallCheck(origin, targetPos, ignoreList)
 	local direction = targetPos - origin
@@ -222,7 +218,7 @@ function RageModule:WallCheck(origin, targetPos, ignoreList)
 	local result = self.Workspace:Raycast(origin, direction, self.rayParams)
 	
 	if not result then return true end
-
+	
 	for _, char in ipairs(ignoreList) do
 		if char and typeof(char) == "Instance" and result.Instance:IsDescendantOf(char) then
 			return true
@@ -236,7 +232,7 @@ function RageModule:SmartPointCheck(origin, targetPart, ignoreList)
 	if not self.smartPoint then
 		return self:WallCheck(origin, targetPart.Position, ignoreList), targetPart.Position
 	end
-
+	
 	local offsets = {
 		Vector3.new(0, 0, 0),
 		Vector3.new(0, 0.4, 0),
@@ -256,7 +252,6 @@ function RageModule:CalculateDamage(partName, distance)
 	local multiplier = self.damageMultipliers[partName] or 1.0
 	local damage = self.baseDamage * multiplier
 	
-	-- Distance falloff
 	if distance > 300 then
 		damage = damage * 0.3
 	elseif distance > 200 then
@@ -356,7 +351,7 @@ function RageModule:ScanBestHitbox(myHead, target)
 				
 				if canSee then
 					local damage = self:CalculateDamage(partName, target.distance)
-
+					
 					if self.minDamageOverkill and damage >= targetHealth then
 						return part, visiblePos
 					end
@@ -404,21 +399,14 @@ end
 
 function RageModule:MainLoop()
 	if not self.enabled or not self.autoFire then return end
-
+	
 	self.frameCounter = self.frameCounter + 1
 	if self.frameCounter % 3 ~= 0 then return end
-
+	
 	local now = tick()
-	if self.adaptiveFireRate then
-		local fps = math.floor(1 / self.RunService.Heartbeat:Wait())
-		if fps < 30 then
-			if now - self.lastShot < self.fireRate * 1.5 then return end
-		elseif now - self.lastShot < self.fireRate then
-			return
-		end
-	else
-		if now - self.lastShot < self.fireRate then return end
-	end
+	local currentDelay = self.fireRate + self.nextFireDelay
+	
+	if now - self.lastShot < currentDelay then return end
 	
 	local myChar = self.player.Character
 	if not myChar or not self:IsAlive(myChar) then return end
@@ -433,7 +421,7 @@ function RageModule:MainLoop()
 	if #targets == 0 then return end
 	
 	self:HandleScope(weapon, true)
-
+	
 	for _, target in ipairs(targets) do
 		local hitboxPart, visiblePos = nil, nil
 		
@@ -457,9 +445,9 @@ function RageModule:MainLoop()
 		end
 		
 		if not hitboxPart or not visiblePos then continue end
-
+		
 		local predictedPos = self:PredictPosition(hitboxPart, target.root)
-
+		
 		if self.hitchanceEnabled then
 			local spreadAngle = 0.3
 			local hitchance = self:CalculateHitChance(myHead.Position, hitboxPart, target.character, spreadAngle)
@@ -472,6 +460,7 @@ function RageModule:MainLoop()
 		
 		if success then
 			self.lastShot = now
+			self.nextFireDelay = (math.random() - 0.5) * self.humanization
 			break
 		end
 	end
@@ -484,8 +473,7 @@ function RageModule:Start()
 		end
 	end)
 	
-	print("[Rage V3] Module started")
-	print("[Rage V3] Optimized & Enhanced")
+	print("[Rage] Module started")
 end
 
 function RageModule:SetEnabled(value) self.enabled = value end
@@ -497,7 +485,6 @@ function RageModule:SetWallCheck(value) self.wallCheck = value end
 function RageModule:SetPredictionEnabled(value) self.predictionEnabled = value end
 function RageModule:SetPredictionMultiplier(value) self.predictionMultiplier = value end
 function RageModule:SetFireRate(value) self.fireRate = value / 1000 end
-
 function RageModule:SetHitchanceEnabled(value) self.hitchanceEnabled = value end
 function RageModule:SetHitchanceValue(value) self.hitchanceValue = value end
 function RageModule:SetHitchanceIterations(value) self.hitchanceIterations = math.min(value, 30) end
@@ -506,13 +493,12 @@ function RageModule:SetMinDamageValue(value) self.minDamageValue = value end
 function RageModule:SetMinDamageOverkill(value) self.minDamageOverkill = value end
 function RageModule:SetAutoScope(value) self.autoScope = value end
 function RageModule:SetSmartPoint(value) self.smartPoint = value end
-
 function RageModule:SetFovCheck(value) self.fovCheck = value end
 function RageModule:SetFovSize(value) self.fovSize = value end
 function RageModule:SetVelocityCheck(value) self.velocityCheck = value end
 function RageModule:SetMaxVelocity(value) self.maxVelocity = value end
 function RageModule:SetAdaptiveFireRate(value) self.adaptiveFireRate = value end
-
+function RageModule:SetHumanization(value) self.humanization = value end
 function RageModule:SetMultiPoint(value) self.smartPoint = value end
 function RageModule:SetAutoStop(value) end
 
